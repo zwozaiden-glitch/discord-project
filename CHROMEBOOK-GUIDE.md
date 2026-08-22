@@ -37,12 +37,17 @@ The bot now shows in your member list as **offline (grey)** — that's normal un
    - Open the **"Variables"** tab → **"New Variable"**:
      - Name: `DISCORD_TOKEN`
      - Value: *paste your bot token from Part 1*
+   - Optional (see **KEY-SYSTEM-GUIDE.md**):
+     - `DATA_DIR` = `/data` (if you attach a volume, so your keys survive redeploys)
    - Click **Add** / **Deploy**.
+   - ⭐ After the bot is online, run `/claimowner` in your server — the first
+     person to run it becomes the bot owner. The API token is generated
+     automatically; find it in the deployment logs (`🔑 Generated API token`).
 5. Open the **"Deployments"** tab → click the latest deployment → **"View Logs"**.
    When you see:
    ```
    ✅ Logged in as My Bot#1234
-   ✅ Registered 2 global slash command(s)
+   ✅ Registered 14 global slash command(s)
    ```
    …your bot is **ONLINE — 24/7!** 🎉 (green dot in Discord)
 
@@ -51,6 +56,11 @@ The bot now shows in your member list as **offline (grey)** — that's normal un
 Type in any channel of your server:
 - `/ping` → bot replies with its speed
 - `/server` → bot shows server info
+- `/setup script: luasnapper` → creates a **key whitelist panel** with Redeem Key / My Key / Reset HWID buttons
+- `/bulkgen script: luasnapper amount: 10` → make a stack of keys
+- `/whitelist script: luasnapper user: @buyer` → give a customer a key
+
+📖 Every key-system command is explained in **KEY-SYSTEM-GUIDE.md**.
 
 ⏳ **Note:** slash commands are registered "globally" which can take **up to 1 hour** to show up the very first time. Usually it's much faster. If you don't see them, wait a bit and restart Discord (Ctrl+R).
 
