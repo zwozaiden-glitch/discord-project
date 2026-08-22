@@ -56,7 +56,7 @@ export function listScripts() {
 // Keys
 // ---------------------------------------------------------------------------
 
-export function makeKey(script, { duration = 'never', createdBy = null, claimedBy = null, dropped = false } = {}) {
+export function makeKey(script, { duration = 'never', createdBy = null, claimedBy = null, dropped = false, persist = true } = {}) {
   let raw;
   do {
     raw = generateRawKey();
@@ -77,6 +77,7 @@ export function makeKey(script, { duration = 'never', createdBy = null, claimedB
     dropped,
   };
 
+  let clearedBlacklist = false;
   if (claimedBy) {
     db.whitelist[`${script}:${claimedBy}`] = {
       key: raw,
@@ -88,19 +89,31 @@ export function makeKey(script, { duration = 'never', createdBy = null, claimedB
     const blKey = `${script}:${claimedBy}`;
     if (db.blacklist[blKey]) {
       delete db.blacklist[blKey];
-      save('blacklist');
+      clearedBlacklist = true;
     }
   }
 
-  save('keys');
-  if (claimedBy) save('whitelist');
+  if (persist) {
+    save('keys');
+    if (claimedBy) save('whitelist');
+    if (clearedBlacklist) save('blacklist');
+  }
   return raw;
 }
 
 export function generateKeys(script, amount, options = {}) {
   const rawKeys = [];
-  for (let i = 0; i < amount; i += 1) rawKeys.push(makeKey(script, options));
+  for (let i = 0; i < amount; i += 1) rawKeys.push(makeKey(script, { ...options, persist: false }));
+  save('keys');
+  if (options.claimedBy) save('whitelist');
   return rawKeys;
+}
+
+// Flush in-memory key/whitelist/blacklist writes after a persist:false batch.
+export function persistKeyState() {
+  save('keys');
+  save('whitelist');
+  save('blacklist');
 }
 
 export function getKeyRecord(rawOrFormatted) {
@@ -226,7 +239,7 @@ const HWID_PATTERN = /^[A-Za-z0-9\-_.:]{1,256}$/;
 
 // Called by the HTTP API / panel redeem. Binds the key to the user's HWID on
 // first validation. Later validations must present the same HWID.
-export function validateKey({ inputKey, hwid, script, ip = null }) {
+export function validateKey({ inputKey, hwid, script, ip = null, skipHwid = false }) {
   const raw = normalizeKey(inputKey);
   if (!raw) return { status: 'invalid', code: 'invalid_key', message: 'Invalid key format.' };
   const rec = db.keys[raw];
@@ -259,6 +272,24 @@ export function validateKey({ inputKey, hwid, script, ip = null }) {
       message: 'This user is not whitelisted for this script.',
       script: rec.script,
       discord_id: userId,
+    };
+  }
+
+  // /api/v1/load only needs a valid key — HWID is bound later by the wrapped script.
+  if (skipHwid) {
+    return {
+      status: 'valid',
+      code: rec.hwid ? 'key_ok' : 'key_unbound',
+      message: 'Key is valid.',
+      script: rec.script,
+      discord_id: userId,
+      key: formatKey(raw),
+      hwid: rec.hwid,
+      hwid_mismatched: false,
+      expiry_renewed: false,
+      expires_at: rec.expiresAt,
+      server_time: nowIso(),
+      ip,
     };
   }
 

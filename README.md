@@ -9,7 +9,7 @@ A Discord bot built with [discord.js](https://discord.js.org/) v14, with a compl
 - ⚡ Slash commands + auto-registration on startup
 - 👑 **No env config needed** — `/claimowner` makes you the bot owner, `/setlog` picks the log channel, API token auto-generates on first boot
 - 🔐 **Key system**: `/generatekey`, `/bulkgen`, `/whitelist`, `/blacklist`, `/deletekey`, `/keydrop`, `/redeem`, `/keyinfo`, `/resethwid`, `/scripts`, `/setup`, `/unsetup`
-- 📦 **Script protection** — `/apply` uploads your `.lua`; the bot wraps it with a runtime whitelist check and users get a protected loadstring from the panel
+- 📦 **Script protection** — `/apply` uploads your `.lua`; the bot wraps it with a runtime whitelist check and users get a Protect-Vmax loader from **Get Script** / `/getscript`
 - 🎫 **Interactive panels** — users click **Redeem Key / Get Script / My Key / Reset HWID** buttons (no commands needed)
 - 🏷️ **Auto buyer roles** — `/setbuyerrole` assigns a role automatically when users redeem; whitelist whole roles with `/whitelist role:`
 - 📊 **Analytics** — `/analytics` shows runs per day, top keys, HWID/status activity (keys & HWIDs masked)
@@ -76,6 +76,7 @@ src/
 /setbuyerrole role: @Buyers                    # auto role on redeem
 /setup script: luasnapper channel: #whitelist  # post the panel
 /apply script: luasnapper file: myscript.lua   # upload + protect script
+/getscript script: luasnapper                  # get the Protect-Vmax loader
 /bulkgen script: luasnapper amount: 10 duration: 7d   # make keys
 /whitelist script: luasnapper user: @buyer     # give a buyer a key
 /keydrop script: luasnapper amount: 3          # public drop

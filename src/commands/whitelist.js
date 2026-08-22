@@ -5,10 +5,23 @@ import {
   makeKey,
   isWhitelisted,
   getUserWhitelist,
+  persistKeyState,
 } from '../lib/keySystem.js';
 import { formatKey, maskKey } from '../lib/keys.js';
 import { sendDM, sendLog, clientEmbed } from '../lib/notify.js';
 import { grantBuyerRole } from '../lib/roles.js';
+import { loaderMessage } from '../lib/loader.js';
+import { fetchRoleMembers, mapPool } from '../lib/util.js';
+import { db } from '../lib/store.js';
+
+function whitelistDm(script, raw) {
+  const hasSource = Boolean(db.scriptsources?.[script]?.source);
+  const keyLine = `🎫 You have been whitelisted for **${script}**!\nYour key: \`${formatKey(raw)}\``;
+  if (!hasSource) {
+    return `${keyLine}\nRun the script — the first run binds this account (HWID) to it.`;
+  }
+  return `${keyLine}\n\n${loaderMessage(script, raw)}`;
+}
 
 export default {
   data: new SlashCommandBuilder()
@@ -64,23 +77,26 @@ export default {
       return interaction.reply({ content: '❌ Pick only one: **user** or **role**.', ephemeral: true });
     }
 
+    // Acknowledge immediately — DMs / member fetch / role grants can exceed Discord's 3s window.
+    await interaction.deferReply({ ephemeral: true });
+
     const record = await ensureScript(script);
 
     // ---- Single user ----
     if (user) {
       if (isWhitelisted(record.name, user.id)) {
         const existing = getUserWhitelist(user.id, record.name)[0];
-        return interaction.reply({
+        return interaction.editReply({
           content: `ℹ️ <@${user.id}> is already whitelisted for **${record.name}** — key \`${maskKey(existing.key)}\`. Use \`/deletekey\` first to replace it.`,
-          ephemeral: true,
         });
       }
 
       const raw = makeKey(record.name, { duration, createdBy: interaction.user.id, claimedBy: user.id });
       const formatted = formatKey(raw);
-      const sent = await sendDM(interaction.client, user.id, {
-        content: `🎫 You have been whitelisted for **${record.name}**!\nYour key: \`${formatted}\`\nRun the script — the first run binds this account (HWID) to it.`,
-      });
+      const [sent] = await Promise.all([
+        sendDM(interaction.client, user.id, { content: whitelistDm(record.name, raw) }),
+        grantBuyerRole(interaction.client, interaction.guild?.id, record.name, user.id),
+      ]);
 
       sendLog(
         interaction.client,
@@ -92,43 +108,64 @@ export default {
         ),
         interaction.guild?.id
       );
-      await grantBuyerRole(interaction.client, interaction.guild?.id, record.name, user.id);
 
-      return interaction.reply({
-        content: `✅ Whitelisted <@${user.id}> for **${record.name}** \`(${duration})\`.\nKey: \`${formatted}\`${sent ? '' : '\n⚠️ Could not DM them — send the key yourself!'}`,
-        ephemeral: true,
+      return interaction.editReply({
+        content:
+          `✅ Whitelisted <@${user.id}> for **${record.name}** \`(${duration})\`.\nKey: \`${formatted}\`${sent ? '' : '\n⚠️ Could not DM them — send the key yourself!'}` +
+          (db.scriptsources?.[record.name]?.source ? `\n\n${loaderMessage(record.name, raw)}` : ''),
       });
     }
 
     // ---- Everyone with a role ----
-    await interaction.deferReply({ ephemeral: true });
     let members;
     try {
-      await interaction.guild.members.fetch();
-      members = [...(await interaction.guild.roles.fetch(role.id)).members.values()];
+      members = await fetchRoleMembers(interaction.guild, role.id);
     } catch {
-      return interaction.editReply({ content: '❌ Could not fetch role members (missing permission?).' });
+      return interaction.editReply({
+        content:
+          '❌ Could not fetch role members. Enable **Server Members Intent** in the Discord Developer Portal (Bot → Privileged Gateway Intents) so I can see everyone with that role.',
+      });
     }
 
-    let done = 0;
+    if (!members.length) {
+      return interaction.editReply({
+        content:
+          `ℹ️ No members found with <@&${role.id}>. If people should be in that role, enable **Server Members Intent** so I can see them.`,
+      });
+    }
+
+    const created = [];
     const already = [];
     for (const member of members) {
+      if (member.user?.bot) continue;
       if (isWhitelisted(record.name, member.id)) {
         already.push(member.user.username);
         continue;
       }
-      const raw = makeKey(record.name, { duration, createdBy: interaction.user.id, claimedBy: member.id });
-      await sendDM(interaction.client, member.id, {
-        content: `🎫 You have been whitelisted for **${record.name}**!\nYour key: \`${formatKey(raw)}\`\nRun the script — the first run binds this account (HWID) to it.`,
+      const raw = makeKey(record.name, {
+        duration,
+        createdBy: interaction.user.id,
+        claimedBy: member.id,
+        persist: false,
       });
-      done += 1;
+      created.push({ member, raw });
     }
+    persistKeyState();
+
+    let dmFailed = 0;
+    await mapPool(created, 8, async ({ member, raw }) => {
+      const [sent] = await Promise.all([
+        sendDM(interaction.client, member.id, { content: whitelistDm(record.name, raw) }),
+        grantBuyerRole(interaction.client, interaction.guild?.id, record.name, member.id),
+      ]);
+      if (!sent) dmFailed += 1;
+    });
 
     sendLog(
       interaction.client,
       clientEmbed(
         interaction.client,
-        `✅ Role whitelist (${done})`,
+        `✅ Role whitelist (${created.length})`,
         `${interaction.user} whitelisted <@&${role.id}> (**${members.length} members**) for **${record.name}** (${duration}).`,
         0x57f287,
       ),
@@ -136,8 +173,11 @@ export default {
     );
 
     const summary = [
-      `✅ Whitelisted **${done}** member(s) with <@&${role.id}> for **${record.name}** \`(${duration})\`.`,
-      already.length ? `ℹ️ Already whitelisted (skipped): ${already.slice(0, 20).join(', ')}${already.length > 20 ? ` +${already.length - 20} more` : ''}` : '',
+      `✅ Whitelisted **${created.length}** member(s) with <@&${role.id}> for **${record.name}** \`(${duration})\`.`,
+      already.length
+        ? `ℹ️ Already whitelisted (skipped): ${already.slice(0, 20).join(', ')}${already.length > 20 ? ` +${already.length - 20} more` : ''}`
+        : '',
+      dmFailed ? `⚠️ Could not DM **${dmFailed}** member(s) — they may have DMs closed.` : '',
     ]
       .filter(Boolean)
       .join('\n');

@@ -3,6 +3,7 @@ import { ensureAdmin } from '../lib/permissions.js';
 import { ensureScript, deleteUserKey, getUserWhitelist } from '../lib/keySystem.js';
 import { formatKey } from '../lib/keys.js';
 import { sendLog, clientEmbed } from '../lib/notify.js';
+import { fetchRoleMembers } from '../lib/util.js';
 
 export default {
   data: new SlashCommandBuilder()
