@@ -62,10 +62,12 @@ export default {
             interaction.client,
             '♻️ Blacklist cleared',
             `${interaction.user} unblacklisted ${user} for **${record.name}**.`,
-            0x5865f2
-          )
-        );
-        return interaction.reply({
+            0x5865f2,
+      ),
+      interaction.guild?.id
+    );
+
+    return interaction.reply({
           content: `♻️ <@${user.id}> was already blacklisted — **removed from the blacklist**. They are not whitelisted; run \`/whitelist\` to re-grant a key.`,
           ephemeral: true,
         });
@@ -83,11 +85,12 @@ export default {
           interaction.client,
           '⛔ User blacklisted',
           `${interaction.user} blacklisted ${user} from **${record.name}**${reason ? ` — ${reason}` : ''}.`,
-          0xed4245
-        )
-      );
+          0xed4245,
+      ),
+      interaction.guild?.id
+    );
 
-      const lines = [`⛔ Blacklisted <@${user.id}> from **${record.name}**.`];
+    const lines = [`⛔ Blacklisted <@${user.id}> from **${record.name}**.`];
       if (result.removed) lines.push(`Their key \`${formatKey(result.raw)}\` was deleted and revoked.`);
       if (!result.removed && existing) lines.push('Their key was already gone.');
       if (!result.removed && !existing) lines.push('They had no key, but are now blocked from validating.');
@@ -119,8 +122,9 @@ export default {
         interaction.client,
         `⛔ Role blacklist (${blacklisted})`,
         `${interaction.user} blacklisted <@&${role.id}> (**${members.length} members**) from **${record.name}**${reason ? ` — ${reason}` : ''}.`,
-        0xed4245
-      )
+        0xed4245,
+      ),
+      interaction.guild?.id
     );
 
     await interaction.editReply({

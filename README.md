@@ -5,6 +5,7 @@ A Discord bot built with [discord.js](https://discord.js.org/) v14, with a compl
 ## Features
 
 - ⚡ Slash commands + auto-registration on startup
+- 👑 **No env config needed** — `/claimowner` makes you the bot owner, `/setlog` picks the log channel, API token auto-generates on first boot
 - 🔐 **Key system**: `/generatekey`, `/bulkgen`, `/whitelist`, `/blacklist`, `/deletekey`, `/keydrop`, `/redeem`, `/keyinfo`, `/resethwid`, `/scripts`, `/setup`, `/unsetup`
 - 🎫 **Interactive panels** — post a panel in a channel: users click **Redeem Key / My Key / Reset HWID** (no commands needed)
 - 🔑 **HWID locking** — first run binds the key to the user's device; sharing = `HWID mismatch`
@@ -27,6 +28,7 @@ src/
 └── lib/
     ├── keySystem.js      # Core key/whitelist/HWID logic
     ├── store.js          # JSON file database
+    ├── settings.js       # Owner claim, log channels, API token
     ├── keys.js           # Key format/generate/normalize
     ├── panel.js          # Interactive panel buttons + redeem modal
     ├── api.js            # HTTP validation API

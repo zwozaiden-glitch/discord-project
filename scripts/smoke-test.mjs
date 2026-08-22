@@ -96,6 +96,27 @@ purgeExpired();
 assert.equal(isWhitelisted('luasnapper', 'user-4'), false, 'expired entry purged');
 assert.equal(validateKey({ inputKey: rawExp, hwid: 'X', script: 'luasnapper' }).code, 'voided');
 
+// --- settings: owner claim + log channel + api token ---
+const { claimOwner, isBotOwner, setLogChannel, getLogChannelId, ensureApiToken } = await import('../src/lib/settings.js');
+
+assert.equal(isBotOwner('user-1'), false, 'nobody is owner yet');
+let claim = claimOwner('user-1');
+assert.equal(claim.ok, true, 'first claim succeeds');
+claim = claimOwner('user-2');
+assert.equal(claim.ok, false, 'second claim rejected');
+assert.equal(isBotOwner('user-1'), true);
+assert.equal(isBotOwner('user-2'), false);
+
+setLogChannel('guild-1', 'channel-123');
+assert.equal(getLogChannelId('guild-1'), 'channel-123');
+assert.equal(getLogChannelId('guild-2'), null, 'per-guild channels');
+setLogChannel('guild-1', null);
+assert.equal(getLogChannelId('guild-1'), null, 'clear works');
+
+const apiTok = ensureApiToken();
+assert.equal(apiTok.token, 'test-token', 'env API_TOKEN takes priority');
+assert.equal(apiTok.generated, false);
+
 // --- API ---
 const api = await import('../src/lib/api.js');
 const server = api.startApiServer({ user: { tag: 'TestBot#1' } });

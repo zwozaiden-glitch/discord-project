@@ -1,13 +1,15 @@
 import { PermissionFlagsBits } from 'discord.js';
-import { CONFIG } from './config.js';
+import { isBotOwner } from './settings.js';
 
 export function isAdmin(interactionOrMember) {
   const member = interactionOrMember?.member || interactionOrMember;
   const userId = interactionOrMember?.user?.id || member?.id;
   if (!userId) return false;
 
-  if (CONFIG.ownerIds.includes(userId)) return true;
-  if (member?.roles?.cache?.some((r) => CONFIG.adminRoleIds.includes(r.id))) return true;
+  // Bot owner (claimed via /claimowner, or pre-set with OWNER_IDS).
+  if (isBotOwner(userId)) return true;
+
+  // Fallback: anyone with the Administrator permission in the server.
   if (member?.permissions?.has(PermissionFlagsBits.Administrator)) return true;
   return false;
 }
@@ -16,7 +18,7 @@ export function isAdmin(interactionOrMember) {
 export async function ensureAdmin(interaction) {
   if (isAdmin(interaction)) return true;
   await interaction.reply({
-    content: '⛔ You need to be an admin (owner, admin role, or Administrator permission) to use this command.',
+    content: '⛔ You need to be the bot owner (or have Administrator permission) to use this command.',
     ephemeral: true,
   });
   return false;

@@ -123,9 +123,11 @@ export async function handlePanelInteraction(interaction) {
         interaction.client,
         '🎫 Key redeemed (panel)',
         `${interaction.user} redeemed \`${formatKey(result.raw)}\` for **${script}**.`,
-        0x57f287
-      )
+        0x57f287,
+      ),
+      interaction.guild?.id
     );
+
     await interaction.reply({
       content: `✅ You are whitelisted for **${script}**!\nYour key: \`${formatKey(result.raw)}\`\nRun the script — the first run binds this account to it.`,
       ephemeral: true,
@@ -176,9 +178,11 @@ export async function handlePanelInteraction(interaction) {
         interaction.client,
         '🔄 HWID reset (panel)',
         `${interaction.user} reset their HWID for **${script}**.`,
-        0x5865f2
-      )
+        0x5865f2,
+      ),
+      interaction.guild?.id
     );
+
     await interaction.editReply({
       content: `🔄 HWID reset for **${script}**. The key is unbound — the next run of the script will bind the new device.`,
     });

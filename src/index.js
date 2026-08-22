@@ -40,8 +40,21 @@ for (const file of readdirSync(eventsPath).filter((f) => f.endsWith('.js'))) {
 // ---- Start the validation API & clean up expired keys ----
 const { startApiServer } = await import('./lib/api.js');
 const { purgeExpired } = await import('./lib/keySystem.js');
+const { ensureApiToken, getStoredOwnerId } = await import('./lib/settings.js');
 
 purgeExpired();
+
+// Make sure a validation API token always exists.
+const { token: apiToken, generated } = ensureApiToken();
+console.log(
+  generated
+    ? `🔑 Generated API token (save it!): ${apiToken}`
+    : `🔑 Validation API token ready (${process.env.API_TOKEN ? 'from API_TOKEN env' : 'from data/settings.json'})`
+);
+if (!getStoredOwnerId()) {
+  console.log('ℹ️ No bot owner yet — run /claimowner in your server (the first person to run it becomes the owner).');
+}
+
 startApiServer(client);
 
 client.login(process.env.DISCORD_TOKEN);

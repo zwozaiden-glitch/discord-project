@@ -24,12 +24,14 @@ Your bot now has a complete license-key system, like the Luarmor-style bots you'
 | `/blacklist script: name user:/role: [reason]` | Admin | Deletes their key, revokes access, blocks future validation |
 | `/deletekey script: name user:/role:` | Admin | Deletes/revokes keys without blacklisting |
 | `/keydrop script: name [amount]` | Admin | Public countdown drop of unredeemed keys — first claim wins |
+| `/setlog channel: #logs` | Owner/Admin | Sets where this server's key events are logged |
+| `/claimowner` | First user | Claims the bot — the first person to run it becomes the owner |
 | `/resethwid [script] [user]` | Everyone | Self-service HWID unbind (cooldown applies). Admins can reset anyone, no cooldown |
 | `/redeem key: LSN-...` | Everyone | Claims a key you were given |
 | `/keyinfo [key]` | Everyone | Your key status + HWID binding (admins can inspect any key) |
 | `/scripts` | Everyone | Lists all scripts + whether you're whitelisted |
 
-**Permissions:** admins are `OWNER_IDS` + `ADMIN_ROLE_IDS` (comma-separated in `.env`). If neither is set, anyone with the **Administrator** permission counts as admin.
+**Permissions:** run `/claimowner` — the first user to run it becomes the bot owner and can use every admin command. (You can also pre-set the owner with `OWNER_IDS` in the environment. Anyone with the **Administrator** permission can also use admin commands.)
 
 ---
 
@@ -113,19 +115,27 @@ Example response:
 
 ### Auth
 
-Set `API_TOKEN` in `.env` (recommended!). Send it on every request:
+Send it on every request:
 
 ```
-Authorization: Bearer YOUR_SECRET_TOKEN
+Authorization: Bearer YOUR_TOKEN
 ```
+
+**Where to get it:** you don't sign up anywhere — the bot **creates it for you**. On first start it generates a random token, saves it in `data/settings.json` and prints it in the logs:
+
+```
+🔑 Generated API token (save it!): YI3TrxAF_aYP39d2kQl9LX4ezBrH98Ro
+```
+
+Copy that line from your bot logs (Railway → Deployments → Logs, or your terminal). Optionally you can set your own via `API_TOKEN` in `.env`/Railway Variables — that value wins.
 
 Quick test:
 ```bash
-curl -H "Authorization: Bearer YOUR_SECRET_TOKEN" \
+curl -H "Authorization: Bearer YOUR_TOKEN" \
   "http://localhost:3000/api/v1/validate?key=LSN-ABCDE-FGHJK-MNPQR&hwid=my-pc-id&script=luasnapper"
 ```
 
-> ⚠️ If `API_TOKEN` is empty the API is open. Only do that on a private network. Also keep `API_PORT` reachable only by your scripts (on Railway it's public — the token is your security).
+> ⚠️ Only your scripts should know this token — anyone with it can check/validate keys. Keep `API_PORT` reachable only by your scripts (on Railway it's public, so the token is your security).
 
 ### Lua example (Luau / executor HTTP)
 
@@ -169,13 +179,14 @@ DISCORD_TOKEN=...
 CLIENT_ID=...
 GUILD_ID=...                # for instant command registration
 KEY_PREFIX=LSN
-OWNER_IDS=123456789,987654321
-ADMIN_ROLE_IDS=111222333
 RESET_COOLDOWN_DAYS=7
 KEYDROP_COUNTDOWN=10
-LOG_CHANNEL_ID=444555666    # audit log of claims/blacklists/bulkgens
 SUPPORT_URL=https://discord.gg/...
-API_TOKEN=change-me-to-a-long-random-string
 API_PORT=3000
 # DATA_DIR=/data            # Railway volume
 ```
+
+Everything else is set **inside Discord, no env needed**:
+- `/claimowner` → you become the bot owner
+- `/setlog channel: #logs` → audit log channel
+- API token → auto-generated on first boot (look in the bot logs for `🔑 Generated API token (save it!)`)

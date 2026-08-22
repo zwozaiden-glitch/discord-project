@@ -58,10 +58,12 @@ export default {
           interaction.client,
           '🚫 Key deleted',
           `${interaction.user} deleted ${user}'s key for **${record.name}** (\`${formatKey(result.raw)}\`).`,
-          0xed4245
-        )
-      );
-      return interaction.reply({
+          0xed4245,
+      ),
+      interaction.guild?.id
+    );
+
+    return interaction.reply({
         content: `✅ Deleted <@${user.id}>'s key for **${record.name}** and revoked access.`,
         ephemeral: true,
       });
@@ -98,8 +100,9 @@ export default {
         interaction.client,
         `🚫 Bulk key deletion (${removed})`,
         `${interaction.user} removed keys for **${record.name}** from <@&${role.id}>.\n\`\`\`${keys.slice(0, 40).join('\n')}${keys.length > 40 ? `\n… ${keys.length - 40} more` : ''}\`\`\``,
-        0xed4245
-      )
+        0xed4245,
+      ),
+      interaction.guild?.id
     );
 
     await interaction.editReply({

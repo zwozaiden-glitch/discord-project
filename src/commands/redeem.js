@@ -34,8 +34,9 @@ export default {
         interaction.client,
         '🎫 Key claimed',
         `${interaction.user} claimed \`${formatKey(result.raw)}\` for **${result.record.script}**.`,
-        0x57f287
-      )
+        0x57f287,
+      ),
+      interaction.guild?.id
     );
 
     await interaction.reply({

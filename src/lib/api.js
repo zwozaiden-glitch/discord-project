@@ -5,14 +5,15 @@
 //   GET /api/v1/validate?key=...&hwid=...&script=...   -> JSON (token required)
 //   GET /api/v1/status?user_id=...&script=...          -> whitelist status for a user
 //
-// Auth: send `Authorization: Bearer <API_TOKEN>` (or ?token=). If API_TOKEN is
-// not set, the API is open — only do that on a private network.
+// Auth: send `Authorization: Bearer <token>` (or ?token=). The token comes from
+// the API_TOKEN env var, or is generated automatically on first boot and stored
+// in data/settings.json (printed in the startup logs).
 import { createServer } from 'node:http';
 import { URL } from 'node:url';
 import { CONFIG } from './config.js';
-import { getKeyRecord, getUserWhitelist, validateKey, isWhitelisted, isBlacklisted } from './keySystem.js';
+import { getApiToken } from './settings.js';
+import { getKeyRecord, getUserWhitelist, validateKey, isBlacklisted } from './keySystem.js';
 import { formatKey } from './keys.js';
-import { sendLog, clientEmbed } from './notify.js';
 
 function json(res, status, body) {
   const payload = JSON.stringify(body);
@@ -29,10 +30,11 @@ function unauthorized(res) {
 }
 
 function authorize(req, searchParams) {
-  if (!CONFIG.apiToken) return true;
+  const token = getApiToken();
+  if (!token) return true;
   const header = req.headers.authorization || '';
-  if (header === `Bearer ${CONFIG.apiToken}`) return true;
-  return searchParams.get('token') === CONFIG.apiToken;
+  if (header === `Bearer ${token}`) return true;
+  return searchParams.get('token') === token;
 }
 
 export function startApiServer(client) {
@@ -105,12 +107,8 @@ export function startApiServer(client) {
   });
 
   server.listen(CONFIG.apiPort, '0.0.0.0', () => {
-    console.log(`✅ Validation API listening on http://0.0.0.0:${CONFIG.apiPort} (auth: ${CONFIG.apiToken ? 'token' : 'OPEN — set API_TOKEN!'})`);
+    console.log(`✅ Validation API listening on http://0.0.0.0:${CONFIG.apiPort} (auth: token)`);
   });
-
-  if (CONFIG.apiToken) {
-    console.log(`🔑 Example: curl -H "Authorization: Bearer ${'<API_TOKEN>'}" "http://localhost:${CONFIG.apiPort}/api/v1/validate?key=LSN-XXXXX-XXXXX-XXXXX&hwid=ABC123"`);
-  }
 
   return server;
 }

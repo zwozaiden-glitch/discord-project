@@ -37,11 +37,12 @@ The bot now shows in your member list as **offline (grey)** — that's normal un
    - Open the **"Variables"** tab → **"New Variable"**:
      - Name: `DISCORD_TOKEN`
      - Value: *paste your bot token from Part 1*
-   - Optional but recommended (see **KEY-SYSTEM-GUIDE.md**):
-     - `OWNER_IDS` = your Discord user ID (you get full access to admin commands)
-     - `API_TOKEN` = any long random string (protects the key-check API)
+   - Optional (see **KEY-SYSTEM-GUIDE.md**):
      - `DATA_DIR` = `/data` (if you attach a volume, so your keys survive redeploys)
    - Click **Add** / **Deploy**.
+   - ⭐ After the bot is online, run `/claimowner` in your server — the first
+     person to run it becomes the bot owner. The API token is generated
+     automatically; find it in the deployment logs (`🔑 Generated API token`).
 5. Open the **"Deployments"** tab → click the latest deployment → **"View Logs"**.
    When you see:
    ```

@@ -53,11 +53,12 @@ export default {
           interaction.client,
           '🔄 HWID reset',
           `${interaction.user}${admin ? ' (admin)' : ''} reset their HWID for ${names}.`,
-          0x5865f2
-        )
-      );
+          0x5865f2,
+      ),
+      interaction.guild?.id
+    );
 
-      return interaction.reply({
+    return interaction.reply({
         content: `🔄 HWID reset for ${names}. The key is unbound — the next run of the script will bind the new device.`,
         ephemeral: true,
       });
@@ -91,8 +92,9 @@ export default {
         interaction.client,
         '🔄 HWID reset (admin)',
         `${interaction.user} reset ${targetUser}'s HWID${names ? ` for ${names}` : ''}.`,
-        0x5865f2
-      )
+        0x5865f2,
+      ),
+      interaction.guild?.id
     );
 
     await interaction.reply({

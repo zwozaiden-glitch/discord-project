@@ -87,11 +87,12 @@ export default {
           interaction.client,
           '✅ User whitelisted',
           `${interaction.user} whitelisted ${user} for **${record.name}** (${duration}).`,
-          0x57f287
-        )
-      );
+          0x57f287,
+      ),
+      interaction.guild?.id
+    );
 
-      return interaction.reply({
+    return interaction.reply({
         content: `✅ Whitelisted <@${user.id}> for **${record.name}** \`(${duration})\`.\nKey: \`${formatted}\`${sent ? '' : '\n⚠️ Could not DM them — send the key yourself!'}`,
         ephemeral: true,
       });
@@ -127,8 +128,9 @@ export default {
         interaction.client,
         `✅ Role whitelist (${done})`,
         `${interaction.user} whitelisted <@&${role.id}> (**${members.length} members**) for **${record.name}** (${duration}).`,
-        0x57f287
-      )
+        0x57f287,
+      ),
+      interaction.guild?.id
     );
 
     const summary = [

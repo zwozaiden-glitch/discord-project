@@ -56,8 +56,9 @@ export default {
         interaction.client,
         `📦 Bulk generated ${rawKeys.length} keys — ${record.name} (${duration})`,
         `\`\`\`\n${list}\n\`\`\``,
-        0x5865f2
-      )
+        0x5865f2,
+      ),
+      interaction.guild?.id
     );
 
     const block = `\`\`\`\n${list}\n\`\`\``;

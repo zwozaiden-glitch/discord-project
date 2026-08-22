@@ -48,10 +48,10 @@ You will only **click buttons and copy-paste**. Total time: ~15 minutes.
    DISCORD_TOKEN=paste-your-bot-token-here
    CLIENT_ID=paste-your-application-id-here
    GUILD_ID=paste-your-server-id-here
-   # Optional — key system settings (see KEY-SYSTEM-GUIDE.md):
-   # OWNER_IDS=your-discord-user-id
-   # ADMIN_ROLE_IDS=id-of-your-admin-role
-   # API_TOKEN=any-long-random-secret
+   # No other settings needed! In Discord, just run:
+   #   /claimowner  -> you become the bot owner
+   #   /setlog channel: #logs -> pick the log channel
+   # The API token is generated automatically on first start (see bot logs).
    ```
    👉 To get your **server ID**: in Discord, go to **User Settings → Advanced → turn ON Developer Mode**. Then **right-click your server's icon → "Copy Server ID"**.
 4. Open a **terminal in the folder**:
