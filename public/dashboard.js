@@ -27,7 +27,15 @@ const MOCK = {
   discordInvite: "https://discord.gg/xFeX95Evce",
   ticketUrl: "https://discord.gg/xFeX95Evce",
   plan: "Vmax",
-  scripts: [], // populated from your API (keyed by discord_id)
+  scripts: [
+    {
+      name: "Vmax",
+      status: "online",
+      hwid: 1,
+      executions: 12,
+      created: "2026-08-22",
+    },
+  ], // fallback script for demo sessions
 };
 
 /* ----------------------------- helpers --------------------------------- */
@@ -110,25 +118,49 @@ function normalizeScript(s, apiKey) {
   };
 }
 
-/* Local empty data (no backend configured yet). */
+/* Local fallback data (for demo sessions or when offline). */
 function localData(session) {
   const apiKey = deriveApiKey(session.user);
+  const isDemo = Boolean(session && session.demo);
+  const fallbackScripts = isDemo
+    ? [
+        normalizeScript(
+          {
+            name: "Vmax",
+            status: "online",
+            hwid: 1,
+            executions: 12,
+            created: "2026-08-22",
+          },
+          apiKey
+        ),
+      ]
+    : [];
+
   return {
     user: session.user,
     apiKey: apiKey,
-    plan: session.demo ? "Demo" : (MOCK.plan || "Free"),
-    scripts: [],
+    plan: isDemo ? "Demo" : (MOCK.plan || "Free"),
+    scripts: fallbackScripts,
   };
 }
 
-/* Fetch real data from your Railway API. Falls back to empty on any failure. */
+/* Fetch real data from your Railway API. Falls back to demo/local data on any failure. */
 async function getUserData(session) {
-  const base = CONFIG.API_BASE;
-  if (!base || session.demo) return localData(session);
+  if (session && session.demo) {
+    return localData(session);
+  }
 
-  const res = await fetch(base + "/api/user/" + encodeURIComponent(session.user.id), {
-    headers: { Authorization: "Bearer " + (session.access_token || "") },
-  });
+  const base = (CONFIG.API_BASE || "").replace(/\/+$/, "");
+  const userId = session && session.user && session.user.id ? session.user.id : "demo";
+  const url = (base ? base : "") + "/api/user/" + encodeURIComponent(userId);
+
+  const headers = {};
+  if (session && session.access_token) {
+    headers["Authorization"] = "Bearer " + session.access_token;
+  }
+
+  const res = await fetch(url, { headers: headers });
   if (!res.ok) throw new Error("HTTP " + res.status);
   const j = await res.json();
 
