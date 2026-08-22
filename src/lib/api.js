@@ -1,18 +1,18 @@
-// HTTP API for Protect-Vmax:
+// HTTP API & Web Server for Protect-Vmax:
 //
-//   GET /health                          -> 200 {"ok":true}
+//   GET /                                -> Web landing page (index.html)
+//   GET /styles.css, /script.js, etc.    -> Static website assets
+//   GET /health                          -> 200 {"ok":true, "bot":...}
+//   GET /api/v1/info                     -> Public system info
 //   GET /callback                        -> Discord OAuth2 login (public, browser-facing)
 //   GET /api/v1/validate?key=..&hwid=..  -> JSON verdict (public, rate-limited)
 //   GET /api/v1/load?script=..&key=..    -> protected Lua source (public, rate-limited)
 //   GET /api/v1/status?user_id=..        -> whitelist status (token required)
 //   GET /api/v1/key?key=..               -> key record        (token required)
-//
-// Public endpoints only reveal validity info (they require the key + HWID that
-// the script already holds). Admin endpoints need Authorization: Bearer <token>.
-// /callback is public because Discord redirects the user's browser there with
-// ?code=... — no API token can be attached to that redirect.
 import { createServer } from 'node:http';
-import { URL } from 'node:url';
+import { URL, fileURLToPath } from 'node:url';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, normalize, extname } from 'node:path';
 import { CONFIG } from './config.js';
 import { getApiToken } from './settings.js';
 import { getKeyRecord, getUserWhitelist, validateKey, isBlacklisted } from './keySystem.js';
@@ -20,6 +20,27 @@ import { formatKey } from './keys.js';
 import { recordValidation } from './analytics.js';
 import { protectSource } from './protect.js';
 import { db } from './store.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PUBLIC_DIR = join(__dirname, '..', '..', 'public');
+
+const MIME_TYPES = {
+  '.html': 'text/html; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.ico': 'image/x-icon',
+  '.txt': 'text/plain; charset=utf-8',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+};
 
 function json(res, status, body) {
   const payload = JSON.stringify(body);
@@ -43,7 +64,7 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-// Minimal browser-facing page (used by the OAuth callback, which humans hit).
+// Minimal browser-facing page (used by OAuth callback errors/info).
 function htmlPage(res, status, title, bodyHtml) {
   res.writeHead(status, {
     'Content-Type': 'text/html; charset=utf-8',
@@ -73,6 +94,45 @@ function htmlPage(res, status, title, bodyHtml) {
 </head>
 <body><main><h1>Protect-Vmax</h1>${bodyHtml}</main></body>
 </html>`);
+}
+
+// Serves static assets from public/ folder
+function serveStaticFile(res, reqPath) {
+  const safePath = reqPath === '/' ? '/index.html' : reqPath;
+  const filePath = normalize(join(PUBLIC_DIR, safePath));
+
+  if (!filePath.startsWith(PUBLIC_DIR)) {
+    return false;
+  }
+
+  if (!existsSync(filePath)) {
+    return false;
+  }
+
+  try {
+    const stats = statSync(filePath);
+    if (stats.isDirectory()) {
+      const indexFile = join(filePath, 'index.html');
+      if (existsSync(indexFile)) {
+        return serveStaticFile(res, join(safePath, 'index.html'));
+      }
+      return false;
+    }
+
+    const ext = extname(filePath).toLowerCase();
+    const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+    const content = readFileSync(filePath);
+
+    res.writeHead(200, {
+      'Content-Type': contentType,
+      'Content-Length': content.length,
+      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600',
+    });
+    res.end(content);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // Handles the Discord OAuth2 redirect: exchanges ?code for an access token,
@@ -197,7 +257,7 @@ function rateLimited(ip) {
   return false;
 }
 
-const PUBLIC_PATHS = new Set(['/health', '/callback', '/api/v1/validate', '/api/v1/load']);
+const PUBLIC_API_PATHS = new Set(['/health', '/api/v1/info', '/callback', '/api/v1/validate', '/api/v1/load']);
 
 export function startApiServer(client) {
   const server = createServer(async (req, res) => {
@@ -216,11 +276,30 @@ export function startApiServer(client) {
 
     if (req.method !== 'GET') return json(res, 405, { status: 'error', message: 'GET only.' });
 
-    if (PUBLIC_PATHS.has(path) && rateLimited(ip)) {
+    if (PUBLIC_API_PATHS.has(path) && rateLimited(ip)) {
       return json(res, 429, { status: 'error', code: 'rate_limited', message: 'Too many requests — slow down.' });
     }
 
-    if (path === '/health') return json(res, 200, { ok: true, bot: client?.user?.tag || 'starting' });
+    if (path === '/health') {
+      return json(res, 200, {
+        ok: true,
+        bot: client?.user?.tag || 'starting',
+        uptime: process.uptime(),
+      });
+    }
+
+    if (path === '/api/v1/info') {
+      return json(res, 200, {
+        status: 'ok',
+        name: 'Protect-Vmax',
+        bot_online: Boolean(client?.user),
+        bot_tag: client?.user?.tag || null,
+        credit: CONFIG.creditName,
+        public_url: CONFIG.publicUrl,
+        discord_client_id: CONFIG.discordClientId || null,
+        commands_count: client?.commands?.size || 16,
+      });
+    }
 
     // ---- Public validation (used by protected scripts at runtime) ----
     if (path === '/api/v1/validate') {
@@ -262,56 +341,62 @@ export function startApiServer(client) {
     }
 
     // ---- Discord OAuth2 login callback (public, browser-facing) ----
-    // MUST stay above the token gate below: Discord redirects the user's
-    // browser here with ?code=... and no API token can be attached.
     if (path === '/callback') return handleOAuthCallback(req, res, url);
 
-    // ---- Everything below needs the API token ----
-    if (!authorize(req, url.searchParams)) return unauthorized(res);
+    // ---- Admin endpoints (require API token) ----
+    if (path.startsWith('/api/')) {
+      if (!authorize(req, url.searchParams)) return unauthorized(res);
 
-    if (path === '/api/v1/status') {
-      const userId = url.searchParams.get('user_id') || '';
-      const script = url.searchParams.get('script') || '';
-      if (!userId) return json(res, 400, { status: 'error', message: 'user_id is required.' });
-      const entries = getUserWhitelist(userId, script || null);
-      const records = entries.map((e) => {
-        const rec = getKeyRecord(e.key);
-        return {
-          script: e.script,
-          key: formatKey(e.key),
-          hwid: rec?.hwid || null,
-          expires_at: rec?.expiresAt || null,
-          valid: Boolean(rec && !rec.voided && !(rec.expiresAt && Date.parse(rec.expiresAt) < Date.now())),
-        };
-      });
-      return json(res, 200, {
-        status: 'ok',
-        user_id: userId,
-        whitelisted: Boolean(records.length),
-        blacklisted: script ? isBlacklisted(script, userId) : false,
-        entries: records,
-      });
+      if (path === '/api/v1/status') {
+        const userId = url.searchParams.get('user_id') || '';
+        const script = url.searchParams.get('script') || '';
+        if (!userId) return json(res, 400, { status: 'error', message: 'user_id is required.' });
+        const entries = getUserWhitelist(userId, script || null);
+        const records = entries.map((e) => {
+          const rec = getKeyRecord(e.key);
+          return {
+            script: e.script,
+            key: formatKey(e.key),
+            hwid: rec?.hwid || null,
+            expires_at: rec?.expiresAt || null,
+            valid: Boolean(rec && !rec.voided && !(rec.expiresAt && Date.parse(rec.expiresAt) < Date.now())),
+          };
+        });
+        return json(res, 200, {
+          status: 'ok',
+          user_id: userId,
+          whitelisted: Boolean(records.length),
+          blacklisted: script ? isBlacklisted(script, userId) : false,
+          entries: records,
+        });
+      }
+
+      if (path === '/api/v1/key') {
+        const rec = getKeyRecord(url.searchParams.get('key') || '');
+        if (!rec) return json(res, 404, { status: 'error', code: 'not_found', message: 'Key not found.' });
+        return json(res, 200, {
+          status: 'ok',
+          script: rec.script,
+          claimed_by: rec.claimedBy,
+          hwid: rec.hwid,
+          expires_at: rec.expiresAt,
+          voided: rec.voided,
+          createdAt: rec.createdAt,
+        });
+      }
+
+      return json(res, 404, { status: 'error', message: 'Not found.' });
     }
 
-    if (path === '/api/v1/key') {
-      const rec = getKeyRecord(url.searchParams.get('key') || '');
-      if (!rec) return json(res, 404, { status: 'error', code: 'not_found', message: 'Key not found.' });
-      return json(res, 200, {
-        status: 'ok',
-        script: rec.script,
-        claimed_by: rec.claimedBy,
-        hwid: rec.hwid,
-        expires_at: rec.expiresAt,
-        voided: rec.voided,
-        created_at: rec.createdAt,
-      });
-    }
+    // ---- Static Web Frontend (/ or /index.html, /styles.css, etc.) ----
+    const served = serveStaticFile(res, path);
+    if (served) return;
 
     return json(res, 404, { status: 'error', message: 'Not found.' });
   });
 
   server.listen(CONFIG.apiPort, '0.0.0.0', () => {
-    console.log(`✅ Protect-Vmax API listening on http://0.0.0.0:${CONFIG.apiPort} (auth: token)`);
+    console.log(`✅ Protect-Vmax Web & API listening on http://0.0.0.0:${CONFIG.apiPort}`);
     if (!CONFIG.discordClientSecret) {
       console.log('ℹ️ DISCORD_CLIENT_SECRET not set — the website "Login with Discord" (/callback) will not work. Add it in Railway → Variables (Developer Portal → OAuth2 → Client Secret).');
     } else {

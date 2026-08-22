@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!--
+    ==========================================================================
+    PROTECT-VMAX — Web Landing Page (Black & White Edition)
+    Connected to Railway & Discord Bot License System
+    
+    CONFIGURABLE PLACEHOLDERS (Edit these or set in public/script.js):
+    - DISCORD_INVITE_LINK : Your Discord server invite (e.g. https://discord.gg/yourserver)
+    - API_HOST            : Your public bot domain (e.g. https://your-bot.up.railway.app)
+    - API_TOKEN           : Validation API Bearer token for admin routes
+    - SCRIPT_NAME         : Default script name (e.g. luasnapper)
+    ==========================================================================
+  -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Protect-Vmax — Protect your Lua scripts. Effortlessly.</title>
+  <meta name="description" content="Production-grade Lua script whitelist & protection system with HWID locking, Discord bot panels, key drops, and real-time validation API.">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Ambient background glow elements -->
+  <div class="bg-glow bg-glow-1" aria-hidden="true"></div>
+  <div class="bg-glow bg-glow-2" aria-hidden="true"></div>
+  <div class="bg-grid-overlay" aria-hidden="true"></div>
+
+  <!-- Navigation -->
+  <header class="site-header">
+    <div class="container header-container">
+      <a href="#" class="brand-logo" aria-label="Protect-Vmax Home">
+        <svg class="logo-shield" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M16 3L5 7.8V15C5 21.8 9.7 28.1 16 29.5C22.3 28.1 27 21.8 27 15V7.8L16 3Z" fill="url(#logo-grad)" stroke="#ffffff" stroke-width="1.5"/>
+          <path d="M16 10V16M16 20H16.01" stroke="#0a0a0a" stroke-width="2.2" stroke-linecap="round"/>
+          <defs>
+            <linearGradient id="logo-grad" x1="5" y1="3" x2="27" y2="29.5" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#ffffff"/>
+              <stop offset="1" stop-color="#888888"/>
+            </linearGradient>
+          </defs>
+        </svg>
+        <span class="brand-text">Protect<span class="brand-sub">-Vmax</span></span>
+      </a>
+
+      <nav class="main-nav" id="mainNav">
+        <a href="#features" class="nav-link">Features</a>
+        <a href="#how-it-works" class="nav-link">How it works</a>
+        <a href="#api" class="nav-link">API</a>
+        <a href="#pricing" class="nav-link">Pricing</a>
+        <a href="#faq" class="nav-link">FAQ</a>
+      </nav>
+
+      <div class="header-actions">
+        <div class="status-indicator" id="botStatusBadge" title="Checking Railway Web & Bot status...">
+          <span class="status-dot"></span>
+          <span class="status-label">Bot Online</span>
+        </div>
+        <a href="/callback" id="discordLoginBtn" class="btn btn-secondary btn-sm nav-login-btn">
+          <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+          </svg>
+          Login
+        </a>
+        <a href="#discord" class="btn btn-primary btn-sm discord-link-target">
+          Join Discord
+        </a>
+        <button class="mobile-menu-toggle" id="menuToggle" aria-label="Toggle navigation menu">
+          <span class="bar"></span>
+          <span class="bar"></span>
+          <span class="bar"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- HERO SECTION -->
+    <section class="hero-section">
+      <div class="container hero-container">
+        <div class="hero-content">
+          <div class="pill-badge reveal">
+            <span class="pill-dot"></span>
+            <span class="pill-text">Now with key drops &amp; auto-panels</span>
+            <span class="pill-arrow">→</span>
+          </div>
+
+          <h1 class="hero-title reveal">
+            Protect your <span class="gradient-text">Lua scripts</span>. Effortlessly.
+          </h1>
+
+          <p class="hero-subtitle reveal">
+            Military-grade hardware-locked licensing, automated Discord whitelist panels, instant key drops, and low-latency validation API for Luau developers and executors.
+          </p>
+
+          <div class="hero-cta-group reveal">
+            <a href="#discord" class="btn btn-primary btn-lg discord-link-target">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+              </svg>
+              Join our Discord
+            </a>
+            <a href="#how-it-works" class="btn btn-secondary btn-lg">
+              See how it works
+            </a>
+          </div>
+
+          <div class="stats-grid reveal">
+            <div class="stat-card">
+              <span class="stat-value">16+</span>
+              <span class="stat-label">Slash Commands</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-value">100%</span>
+              <span class="stat-label">HWID Locked</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-value">1 API</span>
+              <span class="stat-label">Validation Engine</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-value">24/7</span>
+              <span class="stat-label">Railway Hosted</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Floating Mock Discord Panel Visual -->
+        <div class="hero-visual reveal">
+          <!-- Floating Key Chip 1 -->
+          <div class="floating-chip chip-1" aria-hidden="true">
+            <span class="chip-status">✅</span>
+            <span class="chip-code">LSN-98X2K-4M19Q</span>
+            <span class="chip-tag">HWID Bound</span>
+          </div>
+
+          <!-- Floating Key Chip 2 -->
+          <div class="floating-chip chip-2" aria-hidden="true">
+            <span class="chip-status">⚡</span>
+            <span class="chip-code">Protect-Vmax v1.0</span>
+          </div>
+
+          <!-- Mock Discord Panel Card -->
+          <div class="mock-panel-card">
+            <div class="panel-header">
+              <div class="panel-bot-avatar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+              </div>
+              <div class="panel-bot-info">
+                <div class="panel-bot-title">
+                  <span class="bot-name">Protect-Vmax</span>
+                  <span class="bot-badge">BOT</span>
+                  <span class="bot-time">Today at 12:00 PM</span>
+                </div>
+                <div class="panel-embed-title">🛡️ Script Access &amp; Whitelist Panel</div>
+              </div>
+            </div>
+
+            <div class="panel-embed-body">
+              <p class="embed-desc">
+                Welcome to <strong>luasnapper</strong> whitelist manager. Click below to redeem keys, reset your device HWID, or generate your private Protect-Vmax loader.
+              </p>
+
+              <!-- Live Keydrop countdown simulation -->
+              <div class="keydrop-box">
+                <div class="keydrop-header">
+                  <span class="keydrop-title">⚡ Live Key Drop Active</span>
+                  <span class="keydrop-timer" id="keydropTimer">00:07</span>
+                </div>
+                <div class="keydrop-bar-track">
+                  <div class="keydrop-bar-fill" id="keydropBar"></div>
+                </div>
+              </div>
+
+              <!-- Action buttons -->
+              <div class="panel-buttons">
+                <button class="panel-btn panel-btn-primary" onclick="demoPanelAction('Redeem Key')">
+                  🎫 Redeem Key
+                </button>
+                <button class="panel-btn" onclick="demoPanelAction('Get Script')">
+                  📦 Get Script
+                </button>
+                <button class="panel-btn" onclick="demoPanelAction('My Key')">
+                  🔑 My Key
+                </button>
+                <button class="panel-btn" onclick="demoPanelAction('Reset HWID')">
+                  🔄 Reset HWID
+                </button>
+              </div>
+
+              <div class="panel-footer-note">
+                <span>Protected by Protect-Vmax · <strong>Zwoz</strong></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURES SECTION -->
+    <section class="section features-section" id="features">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="section-tag">UNBREAKABLE SECURITY</span>
+          <h2 class="section-title">Built for serious script creators</h2>
+          <p class="section-subtitle">Everything you need to monetize, distribute, and protect your Lua scripts from leaks and sharing.</p>
+        </div>
+
+        <div class="features-grid">
+          <!-- Feature 1 -->
+          <div class="glass-card feature-card reveal">
+            <div class="feature-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">HWID Locking</h3>
+            <p class="feature-desc">
+              First execution binds the key irreversibly to the buyer's unique hardware identifier. Attempts to share the script or key immediately trigger an HWID mismatch block.
+            </p>
+          </div>
+
+          <!-- Feature 2 -->
+          <div class="glass-card feature-card reveal">
+            <div class="feature-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+                <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">Discord Whitelist Bot</h3>
+            <p class="feature-desc">
+              One-click interactive Discord panels with modal inputs, automatic buyer role granting via <code>/setbuyerrole</code>, and zero config setup with <code>/claimowner</code>.
+            </p>
+          </div>
+
+          <!-- Feature 3 -->
+          <div class="glass-card feature-card reveal">
+            <div class="feature-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">Key Generation &amp; Drops</h3>
+            <p class="feature-desc">
+              Bulk create keys with custom durations (<code>1d</code>, <code>7d</code>, <code>30d</code>, <code>never</code>). Host live countdown key drops in public channels with <code>/keydrop</code>.
+            </p>
+          </div>
+
+          <!-- Feature 4 -->
+          <div class="glass-card feature-card reveal">
+            <div class="feature-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">Blacklist &amp; Instant Revoke</h3>
+            <p class="feature-desc">
+              Instantly revoke licenses or blacklist bad actors permanently. Blacklisted users are blocked at the validation endpoint forever, even if they obtain new keys.
+            </p>
+          </div>
+
+          <!-- Feature 5 -->
+          <div class="glass-card feature-card reveal">
+            <div class="feature-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16 18 22 12 16 6"/>
+                <polyline points="8 6 2 12 8 18"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">Full Validation API</h3>
+            <p class="feature-desc">
+              Ultra-fast REST API with rate limiting, server-side protection wrappers, Luau loader distribution, and token-authenticated management endpoints for web integration.
+            </p>
+          </div>
+
+          <!-- Feature 6 -->
+          <div class="glass-card feature-card reveal">
+            <div class="feature-icon-wrap">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+            </div>
+            <h3 class="feature-title">Expiry &amp; Auto-Renewal</h3>
+            <p class="feature-desc">
+              Automatic purging of expired licenses, configurable HWID reset cooldown intervals, and built-in analytics dashboard tracking daily execution volume.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- HOW IT WORKS SECTION -->
+    <section class="section steps-section" id="how-it-works">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="section-tag">STEP-BY-STEP</span>
+          <h2 class="section-title">Up and running in 4 simple steps</h2>
+          <p class="section-subtitle">No complicated servers. Connect your bot on Railway, upload your Lua script, and let Protect-Vmax handle the rest.</p>
+        </div>
+
+        <div class="steps-container">
+          <!-- Step 1 -->
+          <div class="step-card reveal">
+            <div class="step-number">01</div>
+            <div class="step-body">
+              <h3 class="step-title">Deploy Bot &amp; Claim Owner</h3>
+              <p class="step-desc">
+                Deploy with 1 click to Railway. Type <code>/claimowner</code> in your Discord server to become the master administrator.
+              </p>
+            </div>
+          </div>
+
+          <!-- Step 2 -->
+          <div class="step-card reveal">
+            <div class="step-number">02</div>
+            <div class="step-body">
+              <h3 class="step-title">Upload Script &amp; Setup Panel</h3>
+              <p class="step-desc">
+                Run <code>/apply script: myhub file: hub.lua</code> to inject the anti-tamper wrapper, and <code>/setup</code> to drop the interactive whitelist panel.
+              </p>
+            </div>
+          </div>
+
+          <!-- Step 3 -->
+          <div class="step-card reveal">
+            <div class="step-number">03</div>
+            <div class="step-body">
+              <h3 class="step-title">Generate Keys or Whitelist Buyers</h3>
+              <p class="step-desc">
+                Use <code>/bulkgen</code> to create a batch of keys, <code>/whitelist</code> to directly grant access to Discord buyers, or <code>/keydrop</code> for giveaways.
+              </p>
+            </div>
+          </div>
+
+          <!-- Step 4 -->
+          <div class="step-card reveal">
+            <div class="step-number">04</div>
+            <div class="step-body">
+              <h3 class="step-title">Loader Validates &amp; Locks HWID</h3>
+              <p class="step-desc">
+                Buyers run the Protect-Vmax loader in their executor. The API validates the license in milliseconds and locks execution to their hardware.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- API & LOADER SECTION -->
+    <section class="section api-section" id="api">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="section-tag">DEVELOPER INTEGRATION</span>
+          <h2 class="section-title">High-speed Validation REST API</h2>
+          <p class="section-subtitle">Real-time HTTP validation with built-in hardware identification and encrypted payload delivery.</p>
+        </div>
+
+        <div class="api-grid">
+          <!-- Left: API Documentation -->
+          <div class="api-docs reveal">
+            <div class="endpoint-badge">
+              <span class="method-tag">GET</span>
+              <span class="endpoint-url">/api/v1/validate</span>
+            </div>
+
+            <p class="api-intro">
+              Called automatically by your protected script at runtime. Evaluates license validity, checks blacklist status, and enforces HWID hardware binding.
+            </p>
+
+            <h4 class="api-subheading">Response Codes</h4>
+            <div class="response-codes-list">
+              <div class="response-code-item">
+                <span class="code-pill code-pill-success">hwid_bound</span>
+                <span class="code-desc">First run: Key valid, hardware ID successfully bound.</span>
+              </div>
+              <div class="response-code-item">
+                <span class="code-pill code-pill-success">hwid_ok</span>
+                <span class="code-desc">Key valid, matches currently registered hardware ID.</span>
+              </div>
+              <div class="response-code-item">
+                <span class="code-pill code-pill-danger">hwid_mismatch</span>
+                <span class="code-desc">Key valid but executed on a different unauthorized device.</span>
+              </div>
+              <div class="response-code-item">
+                <span class="code-pill code-pill-danger">blacklisted</span>
+                <span class="code-desc">User or device permanently blacklisted from all scripts.</span>
+              </div>
+              <div class="response-code-item">
+                <span class="code-pill code-pill-danger">expired / voided</span>
+                <span class="code-desc">License duration has passed or was revoked by admin.</span>
+              </div>
+            </div>
+
+            <div class="api-test-box">
+              <h4 class="api-subheading">Live Key Quick Check</h4>
+              <div class="key-check-form">
+                <input type="text" id="testKeyInput" placeholder="Enter key (e.g. LSN-XXXXX-XXXXX-XXXXX)" class="key-input">
+                <button type="button" id="testKeyBtn" class="btn btn-secondary btn-sm">Check Key</button>
+              </div>
+              <div id="testKeyResult" class="key-check-result" style="display: none;"></div>
+            </div>
+          </div>
+
+          <!-- Right: Luau Loader Code Box -->
+          <div class="api-code-wrap reveal">
+            <div class="code-card">
+              <div class="code-header">
+                <div class="code-dots">
+                  <span class="dot"></span>
+                  <span class="dot"></span>
+                  <span class="dot"></span>
+                </div>
+                <div class="code-tab">loader.lua (Luau)</div>
+                <button class="copy-btn" id="copyCodeBtn" title="Copy code to clipboard">
+                  <svg class="copy-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  <span class="copy-text">Copy</span>
+                </button>
+              </div>
+              <pre class="code-content"><code id="luauCodeBlock"><span class="token-comment">-- Protect-Vmax loader — luasnapper</span>
+<span class="token-comment">-- Protected &amp; Verified by Zwoz</span>
+
+<span class="token-keyword">local</span> key = <span class="token-string">"LSN-98X2K-4M19Q-Z9A2B"</span> <span class="token-comment">-- user key</span>
+
+<span class="token-function">loadstring</span>(game:<span class="token-function">HttpGet</span>(
+    <span class="token-string">"https://discord-project-production-a058.up.railway.app/api/v1/load?script=luasnapper&amp;key="</span> .. key
+))()</code></pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRICING SECTION -->
+    <section class="section pricing-section" id="pricing">
+      <div class="container">
+        <div class="section-header reveal">
+          <span class="section-tag">SIMPLE PRICING</span>
+          <h2 class="section-title">Transparent plans for creators</h2>
+          <p class="section-subtitle">Get started for free or scale your community with managed high-speed hosting.</p>
+        </div>
+
+        <div class="pricing-grid">
+          <!-- Starter Plan -->
+          <div class="glass-card pricing-card reveal">
+            <div class="pricing-header">
+              <h3 class="plan-name">Starter</h3>
+              <p class="plan-desc">For individual script developers starting out.</p>
+              <div class="plan-price">
+                <span class="price-currency">$</span>
+                <span class="price-amount">0</span>
+                <span class="price-period">/ forever</span>
+              </div>
+            </div>
+
+            <ul class="plan-features">
+              <li>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Unlimited Scripts &amp; Keys</span>
+              </li>
+              <li>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>HWID Hardware Binding</span>
+              </li>
+              <li>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Public Countdown Keydrops</span>
+              </li>
+              <li>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Discord Whitelist Bot Panels</span>
+              </li>
+              <li>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Validation REST API Access</span>
+              </li>
+              <li>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Community Support</span>
+              </li>
+            </ul>
+
+            <a href="#discord" class="btn btn-secondary btn-full discord-link-target">
+              Get Started Free
+            </a>
+          </div>
+
+          <!-- Premium Plan -->
+          <div class="glass-card pricing-card pricing-featured reveal">
+            <div class="popular-badge">MOST POPULAR</div>
+            <div class="pricing-header">
+              <h3 class="plan-name">Premium</h3>
+              <p class="plan-desc">For high-traffic hubs, premium scripts &amp; teams.</p>
+              <div class="plan-price">
+                <span class="price-currency">$</span>
+                <span class="price-amount">4</span>
+                <span class="price-period">/ month</span>
+              </div>
+            </div>
+
+            <ul class="plan-features">
+              <li>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span><strong>Everything in Starter</strong></span>
+              </li>
+              <li>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Managed 24/7 Railway Cloud Hosting</span>
+              </li>
+              <li>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Custom Branding &amp; Loader Watermarks</span>
+              </li>
+              <li>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Auto Role Sync on Purchase</span>
+              </li>
+              <li>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Priority 1-on-1 Support</span>
+              </li>
+              <li>
+                <svg class="check-icon" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Early Access to Updates</span>
+              </li>
+            </ul>
+
+            <a href="#discord" class="btn btn-primary btn-full discord-link-target">
+              Upgrade to Premium
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ SECTION -->
+    <section class="section faq-section" id="faq">
+      <div class="container faq-container">
+        <div class="section-header reveal">
+          <span class="section-tag">FREQUENTLY ASKED</span>
+          <h2 class="section-title">Common Questions</h2>
+          <p class="section-subtitle">Everything you need to know about Protect-Vmax licensing, HWID locking, and bot hosting.</p>
+        </div>
+
+        <div class="faq-accordion">
+          <!-- FAQ 1 -->
+          <div class="faq-item reveal">
+            <button class="faq-question" aria-expanded="false">
+              <span>What is HWID locking?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                HWID locking captures the buyer's unique hardware identifier (or client device ID) on their very first script execution. From that point onward, that key will only execute on that specific device. If the key is shared with friends or leaked publicly, the API rejects it with an <code>hwid_mismatch</code> error.
+              </p>
+            </div>
+          </div>
+
+          <!-- FAQ 2 -->
+          <div class="faq-item reveal">
+            <button class="faq-question" aria-expanded="false">
+              <span>How do my users get keys?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Users can redeem keys via the interactive Discord panel buttons (<code>🎫 Redeem Key</code>) or by running <code>/redeem</code> in Discord. You can also grant keys directly to specific buyers or entire server roles using <code>/whitelist user:@buyer</code>.
+              </p>
+            </div>
+          </div>
+
+          <!-- FAQ 3 -->
+          <div class="faq-item reveal">
+            <button class="faq-question" aria-expanded="false">
+              <span>Can keys expire?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Yes! When creating keys via <code>/generatekey</code> or <code>/bulkgen</code>, you can set durations such as <code>1d</code>, <code>3d</code>, <code>7d</code>, <code>30d</code>, or <code>never</code> (lifetime). Expired keys are automatically pruned and immediately blocked at runtime.
+              </p>
+            </div>
+          </div>
+
+          <!-- FAQ 4 -->
+          <div class="faq-item reveal">
+            <button class="faq-question" aria-expanded="false">
+              <span>What happens when I blacklist someone?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Blacklisting a user (via <code>/blacklist add user:@badactor</code>) voids their active keys, logs the reason, and adds their Discord ID and hardware fingerprint to the global blacklist database. Even if they attempt to redeem new keys, validation is permanently blocked.
+              </p>
+            </div>
+          </div>
+
+          <!-- FAQ 5 -->
+          <div class="faq-item reveal">
+            <button class="faq-question" aria-expanded="false">
+              <span>Can I use my own Discord bot?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                Yes! The entire project runs as your own custom Discord bot. You create the bot on the Discord Developer Portal, paste your bot token into Railway, and run <code>/claimowner</code> to make yourself the master owner.
+              </p>
+            </div>
+          </div>
+
+          <!-- FAQ 6 -->
+          <div class="faq-item reveal">
+            <button class="faq-question" aria-expanded="false">
+              <span>How do I check a key from my script?</span>
+              <span class="faq-icon">+</span>
+            </button>
+            <div class="faq-answer">
+              <p>
+                You don't need to write custom validation logic! Running <code>/apply script: myscript file: myscript.lua</code> wraps your code automatically with our lightweight runtime validator. When users fetch their loader via <code>/getscript</code>, the loader securely fetches and executes the protected code.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FINAL CTA SECTION -->
+    <section class="section cta-section" id="discord">
+      <div class="container cta-container reveal">
+        <div class="cta-glow-bg" aria-hidden="true"></div>
+        <div class="cta-content">
+          <h2 class="cta-title">Ready to protect your scripts?</h2>
+          <p class="cta-subtitle">Join our community server or connect your bot to Railway today. Start protecting your work in under 5 minutes.</p>
+          <div class="cta-buttons">
+            <a href="#discord" class="btn btn-primary btn-lg discord-link-target">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+              </svg>
+              Join our Discord
+            </a>
+            <a href="/callback" class="btn btn-secondary btn-lg">
+              Login with Discord
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="site-footer">
+    <div class="container footer-container">
+      <div class="footer-brand">
+        <div class="brand-logo">
+          <svg class="logo-shield" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16 3L5 7.8V15C5 21.8 9.7 28.1 16 29.5C22.3 28.1 27 21.8 27 15V7.8L16 3Z" fill="url(#footer-grad)" stroke="#ffffff" stroke-width="1.5"/>
+            <path d="M16 10V16M16 20H16.01" stroke="#0a0a0a" stroke-width="2.2" stroke-linecap="round"/>
+            <defs>
+              <linearGradient id="footer-grad" x1="5" y1="3" x2="27" y2="29.5" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#ffffff"/>
+                <stop offset="1" stop-color="#888888"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <span class="brand-text">Protect<span class="brand-sub">-Vmax</span></span>
+        </div>
+        <p class="footer-desc">
+          High-performance Lua script protection and hardware-locking whitelist licensing engine.
+        </p>
+        <div class="footer-credit">
+          Made by <strong>Zwoz</strong> · Protect-Vmax
+        </div>
+      </div>
+
+      <div class="footer-links-grid">
+        <div class="footer-col">
+          <h5 class="footer-col-title">Product</h5>
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#how-it-works">How it works</a></li>
+            <li><a href="#pricing">Pricing</a></li>
+            <li><a href="/health">System Status</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h5 class="footer-col-title">Resources</h5>
+          <ul>
+            <li><a href="#api">Validation API</a></li>
+            <li><a href="/api/v1/info">API Info</a></li>
+            <li><a href="/callback">Discord Login</a></li>
+            <li><a href="#faq">FAQ</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h5 class="footer-col-title">Community</h5>
+          <ul>
+            <li><a href="#discord" class="discord-link-target">Discord Server</a></li>
+            <li><a href="https://github.com/zwozaiden-glitch/discord-project" target="_blank" rel="noopener">GitHub Repo</a></li>
+            <li><a href="https://railway.app" target="_blank" rel="noopener">Railway Cloud</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="container footer-bottom">
+      <p class="copyright-text">
+        &copy; <span id="yearSpan">2026</span> Protect-Vmax. All rights reserved.
+      </p>
+      <div class="footer-bottom-badge">
+        <span>Protected with Protect-Vmax</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

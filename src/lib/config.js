@@ -12,7 +12,22 @@ function idList(value) {
     .filter(Boolean);
 }
 
-const publicUrl = (process.env.PUBLIC_URL || '').trim();
+// Auto-detect Railway domain if PUBLIC_URL is not explicitly set
+function resolvePublicUrl() {
+  if (process.env.PUBLIC_URL) return process.env.PUBLIC_URL.trim().replace(/\/+$/, '');
+  if (process.env.RAILWAY_PUBLIC_DOMAIN) return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`.replace(/\/+$/, '');
+  if (process.env.RAILWAY_STATIC_URL) return `https://${process.env.RAILWAY_STATIC_URL}`.replace(/\/+$/, '');
+  return 'https://discord-project-production-a058.up.railway.app';
+}
+
+const publicUrl = resolvePublicUrl();
+const discordClientId = (process.env.DISCORD_CLIENT_ID || process.env.CLIENT_ID || '').trim();
+const discordClientSecret = (process.env.DISCORD_CLIENT_SECRET || '').trim();
+const oauthRedirectUri = (
+  process.env.DISCORD_OAUTH_REDIRECT_URI ||
+  (publicUrl ? `${publicUrl}/callback` : '')
+).trim();
+const websiteUrl = (process.env.WEBSITE_URL || publicUrl || '/').trim();
 
 export const CONFIG = {
   // Optional pre-claim: users who are treated as the bot owner, comma-separated.
@@ -25,19 +40,21 @@ export const CONFIG = {
   // Users can only reset their HWID once every N days (admins bypass this).
   resetCooldownDays: positiveNumber(process.env.RESET_COOLDOWN_DAYS, 7),
 
-  // HTTP validation API
+  // HTTP validation API & web server port (Railway sets PORT)
   apiToken: (process.env.API_TOKEN || '').trim(),
-  apiPort: positiveNumber(process.env.API_PORT || process.env.PORT, 3000),
+  apiPort: positiveNumber(process.env.PORT || process.env.API_PORT, 3000),
 
   // Public URL of the bot (Railway domain) — used for loadstrings / script URLs.
-  // Falls back to the current production host so loaders work even if PUBLIC_URL is unset.
-  publicUrl: (process.env.PUBLIC_URL || 'https://discord-project-production-a058.up.railway.app').trim().replace(/\/+$/, ''),
+  publicUrl,
+
+  // Discord OAuth2 & Web site integration
+  discordClientId,
+  discordClientSecret,
+  oauthRedirectUri,
+  websiteUrl,
 
   // Credit shown on panels/scripts (default Zwoz).
   creditName: (process.env.CREDIT_NAME || 'Zwoz').trim(),
-
-  // Channel where important events are logged is set per-server via /setlog
-  // (stored in data/settings.json).
 
   // Seconds of countdown before a /keydrop reveals the keys (3-60).
   dropCountdown: Math.min(Math.max(positiveNumber(process.env.KEYDROP_COUNTDOWN, 10), 3), 60),
