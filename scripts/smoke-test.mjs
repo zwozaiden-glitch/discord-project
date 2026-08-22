@@ -204,6 +204,80 @@ assert.ok(stats.byDay.length === 7, '7-day buckets');
 assert.ok(stats.topKeys.length >= 1, 'top keys computed');
 assert.ok(stats.recent[0].hwid.includes('…') || stats.recent[0].hwid.length <= 8, 'hwid masked');
 
+// --- Discord OAuth2 /callback (public — must never hit the API token gate) ---
+const { CONFIG } = await import('../src/lib/config.js');
+const realFetch = globalThis.fetch;
+
+// 1) Opened directly (no code) -> friendly 400 page, NOT the 401 token error.
+res = await get('/callback');
+assert.equal(res.status, 400, 'direct /callback visit -> 400 info page');
+let page = await res.text();
+assert.match(page, /discord login callback/i);
+assert.ok(!page.includes('Missing or invalid API token'), 'no token error on /callback');
+
+// 2) Code present but OAuth not configured -> actionable 500 page.
+CONFIG.discordClientId = '';
+CONFIG.discordClientSecret = '';
+CONFIG.oauthRedirectUri = '';
+res = await get('/callback?code=abc');
+assert.equal(res.status, 500, 'missing config reported');
+page = await res.text();
+assert.ok(page.includes('DISCORD_CLIENT_SECRET'), 'names the missing env var');
+assert.ok(!page.includes('Missing or invalid API token'), 'no token error');
+
+// 3) Configured -> token exchange + identity -> success page.
+CONFIG.discordClientId = 'client-123';
+CONFIG.discordClientSecret = 'secret-456';
+CONFIG.oauthRedirectUri = 'https://bot.example/callback';
+let exchanged = null;
+globalThis.fetch = async (input, init) => {
+  const urlStr = String(input instanceof URL ? input : input?.url || input);
+  if (urlStr.startsWith('https://discord.com/api/oauth2/token')) {
+    exchanged = Object.fromEntries(new URLSearchParams(init.body));
+    return new Response(JSON.stringify({ access_token: 'at-1', token_type: 'Bearer' }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (urlStr === 'https://discord.com/api/users/@me') {
+    return new Response(JSON.stringify({ id: '42', username: 'zwoz', global_name: 'Zwoz', avatar: null }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  return realFetch(input, init);
+};
+res = await get('/callback?code=abc');
+globalThis.fetch = realFetch;
+assert.equal(res.status, 200, 'successful login page');
+page = await res.text();
+assert.match(page, /Logged in as Zwoz/);
+assert.ok(page.includes('42'), 'shows the Discord ID');
+assert.ok(!page.includes('secret-456'), 'never leaks the client secret');
+assert.equal(exchanged.client_id, 'client-123');
+assert.equal(exchanged.client_secret, 'secret-456');
+assert.equal(exchanged.grant_type, 'authorization_code');
+assert.equal(exchanged.redirect_uri, 'https://bot.example/callback');
+
+// 4) Discord rejects the code -> 502 with the Discord error, still not the 401.
+globalThis.fetch = async (input) => {
+  const urlStr = String(input instanceof URL ? input : input?.url || input);
+  if (urlStr.startsWith('https://discord.com/')) {
+    return new Response(JSON.stringify({ error: 'invalid_grant' }), {
+      status: 400, headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  return realFetch(input);
+};
+res = await get('/callback?code=abc');
+globalThis.fetch = realFetch;
+assert.equal(res.status, 502, 'rejected exchange -> 502');
+page = await res.text();
+assert.match(page, /invalid_grant/);
+
+// 5) The admin token gate is still intact for everything else.
+res = await get('/api/v1/status?user_id=user-1');
+assert.equal(res.status, 401, 'status still requires the token');
+assert.equal((await res.json()).code, 'unauthorized');
+
 server.close();
 rmSync(process.env.DATA_DIR, { recursive: true, force: true });
 console.log('✅ All smoke tests passed');
