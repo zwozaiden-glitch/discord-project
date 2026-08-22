@@ -37,4 +37,11 @@ for (const file of readdirSync(eventsPath).filter((f) => f.endsWith('.js'))) {
   }
 }
 
+// ---- Start the validation API & clean up expired keys ----
+const { startApiServer } = await import('./lib/api.js');
+const { purgeExpired } = await import('./lib/keySystem.js');
+
+purgeExpired();
+startApiServer(client);
+
 client.login(process.env.DISCORD_TOKEN);

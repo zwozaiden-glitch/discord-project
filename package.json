@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "deploy-commands": "node src/deploy-commands.js"
+    "deploy-commands": "node src/deploy-commands.js",
+    "test": "node scripts/smoke-test.mjs"
   },
   "keywords": ["discord", "bot", "discord.js"],
   "license": "MIT",

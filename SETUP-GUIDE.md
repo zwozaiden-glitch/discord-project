@@ -48,6 +48,10 @@ You will only **click buttons and copy-paste**. Total time: ~15 minutes.
    DISCORD_TOKEN=paste-your-bot-token-here
    CLIENT_ID=paste-your-application-id-here
    GUILD_ID=paste-your-server-id-here
+   # Optional — key system settings (see KEY-SYSTEM-GUIDE.md):
+   # OWNER_IDS=your-discord-user-id
+   # ADMIN_ROLE_IDS=id-of-your-admin-role
+   # API_TOKEN=any-long-random-secret
    ```
    👉 To get your **server ID**: in Discord, go to **User Settings → Advanced → turn ON Developer Mode**. Then **right-click your server's icon → "Copy Server ID"**.
 4. Open a **terminal in the folder**:
@@ -66,6 +70,10 @@ You will only **click buttons and copy-paste**. Total time: ~15 minutes.
 In your Discord server, type:
 - `/ping` → the bot answers with its speed
 - `/server` → the bot shows info about your server
+- `/setup script: luasnapper` → posts a **key whitelist panel** (like the Luarmor bots)
+- `/generatekey script: luasnapper` → creates a key; `/whitelist user: @friend` grants access
+
+📖 Every key-system command is explained in **KEY-SYSTEM-GUIDE.md**.
 
 ## Everyday use
 
