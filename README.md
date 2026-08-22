@@ -1,6 +1,6 @@
 # Discord Project
 
-A Discord bot built with [discord.js](https://discord.js.org/) v14, with a complete **script key / whitelist system** (like Luarmor/Polsec-style bots), slash commands, interactive panels, script protection, analytics and a validation API for your scripts.
+A Discord bot built with [discord.js](https://discord.js.org/) v14, with a complete **script key / whitelist system** (like Luarmor/Polsec-style bots), slash commands, interactive panels, script protection, analytics, web landing page, and a validation API for your scripts.
 
 🌐 **Made by Zwoz** — Protect-Vmax
 
@@ -16,8 +16,9 @@ A Discord bot built with [discord.js](https://discord.js.org/) v14, with a compl
 - 🔑 **HWID locking** — first run binds the key to the user's device; sharing = `HWID mismatch`
 - 🛡️ **Blacklist** — revokes the key *and* blocks validation forever, even with new keys
 - ⏳ Key expiry + auto-renewal for active users, HWID reset cooldowns
-- 🌐 **HTTP API** — `/api/v1/validate` + `/api/v1/load` for scripts; `/api/v1/status` + `/api/v1/key` (token auth) for management
+- 🌐 **Web Landing Page & HTTP API** — Monochrome Black & White landing page at `/`; `/api/v1/validate` + `/api/v1/load` for scripts; `/api/v1/status` + `/api/v1/key` (token auth) for management
 - 🔐 **Discord OAuth login** — the website's "Login with Discord" button redirects to `/callback`, which exchanges the code and shows who logged in (needs `DISCORD_CLIENT_SECRET`; redirect URI = `PUBLIC_URL` + `/callback`)
+- 🚂 **Railway 24/7 Hosting Ready** — automatic port binding, railway schema config, volume persistence support
 - 🧩 Modular structure — drop a file into `src/commands/` or `src/events/` and it's auto-loaded
 - 🔐 Secrets kept in `.env` (never committed); data stored as JSON in `data/`
 
@@ -25,7 +26,7 @@ A Discord bot built with [discord.js](https://discord.js.org/) v14, with a compl
 
 ```
 src/
-├── index.js              # Bot entry point (loads commands & events, starts API)
+├── index.js              # Bot entry point (loads commands & events, starts Web & API)
 ├── deploy-commands.js    # Registers slash commands with Discord
 ├── commands/             # /ping, /server + all key-system & protection commands
 ├── events/
@@ -40,10 +41,15 @@ src/
     ├── protect.js        # Wraps scripts with the runtime whitelist check
     ├── analytics.js      # Validation run analytics
     ├── roles.js          # Auto buyer role assignment
-    ├── api.js            # HTTP validation/load/status API
+    ├── api.js            # HTTP validation/load/status API & Web static server
     ├── permissions.js    # Admin checks
     ├── config.js         # Env config
     └── notify.js         # DM + log-channel helpers
+public/                   # Web landing page assets
+├── index.html            # Protect-Vmax Landing Page
+├── styles.css            # Black & white design system
+├── script.js             # Client scripts, copy loader, status check
+└── favicon.svg           # Shield icon
 ```
 
 ## Setup
@@ -86,9 +92,11 @@ src/
 
 ➡️ Full docs: [KEY-SYSTEM-GUIDE.md](KEY-SYSTEM-GUIDE.md)
 
-## Hosting
+## Hosting on Railway
 
-See [CHROMEBOOK-GUIDE.md](CHROMEBOOK-GUIDE.md) (Railway, no coding) or [SETUP-GUIDE.md](SETUP-GUIDE.md) (run on your PC).
+See [RAILWAY-GUIDE.md](RAILWAY-GUIDE.md) for 24/7 cloud hosting with web landing page, domain generation, Discord OAuth callback, and persistent data volumes.
+
+Also see [CHROMEBOOK-GUIDE.md](CHROMEBOOK-GUIDE.md) (browser-only setup) or [SETUP-GUIDE.md](SETUP-GUIDE.md) (run on your PC).
 
 ## License
 

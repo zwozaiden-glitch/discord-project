@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!--
+    ============================================================
+    Protect-Vmax — Dashboard (app layout)
+    Discord login -> own API key -> hosts their script.
+    ============================================================
+  -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Protect-Vmax</title>
+  <meta name="description" content="Your Protect-Vmax dashboard: API key, hosted scripts, bot and account." />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+
+  <!-- Animated gradient background (shared with the landing page) -->
+  <div class="bg-orbs" aria-hidden="true">
+    <span class="orb orb-1"></span>
+    <span class="orb orb-2"></span>
+    <span class="orb orb-3"></span>
+    <span class="orb orb-4"></span>
+  </div>
+
+  <div class="app">
+    <!-- ============================= SIDEBAR ============================= -->
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="index.html" aria-label="Protect-Vmax home">
+        <span class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l7 3v5c0 4.6-3 8.2-7 10-4-1.8-7-5.4-7-10V6l7-3z" />
+            <path d="M9 12l2 2 4-4" />
+          </svg>
+        </span>
+        <span class="brand-name">Protect-<span class="gradient-text">Vmax</span></span>
+      </a>
+
+      <nav class="side-nav" aria-label="Dashboard">
+        <button class="side-link active" type="button" data-view="dashboard">
+          <span class="side-ico">▦</span> Dashboard
+        </button>
+        <button class="side-link" type="button" data-view="scripts">
+          <span class="side-ico">❮❯</span> Scripts
+        </button>
+        <button class="side-link" type="button" data-view="keys">
+          <span class="side-ico">⚿</span> API Keys
+        </button>
+        <button class="side-link" type="button" data-view="bot">
+          <span class="side-ico">✦</span> Bot
+        </button>
+        <button class="side-link" type="button" data-view="settings">
+          <span class="side-ico">⚙</span> Settings
+        </button>
+      </nav>
+
+      <div class="side-user" id="side-user">
+        <img class="side-avatar" id="side-avatar" alt="" />
+        <div class="side-user-meta">
+          <span class="side-username" id="side-username"></span>
+          <span class="side-plan" id="side-plan"></span>
+        </div>
+        <button class="side-logout" id="side-logout" type="button" title="Log out">Log out</button>
+      </div>
+    </aside>
+
+    <!-- ============================= MAIN ============================= -->
+    <div class="app-main">
+      <header class="topbar">
+        <button class="sidebar-toggle" id="sidebar-toggle" type="button" aria-label="Toggle menu" aria-expanded="false">
+          <span></span><span></span><span></span>
+        </button>
+        <div class="topbar-title" id="topbar-title">Dashboard</div>
+        <a class="btn btn-ghost btn-sm" href="index.html">Back to site</a>
+      </header>
+
+      <main class="dashboard-main">
+        <div class="container" id="dashboard-root">
+          <!-- Filled in by dashboard.js -->
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div class="toast-wrap" id="toast-wrap" aria-live="polite"></div>
+
+  <script src="auth.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

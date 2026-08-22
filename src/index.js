@@ -55,6 +55,18 @@ if (!getStoredOwnerId()) {
   console.log('ℹ️ No bot owner yet — run /claimowner in your server (the first person to run it becomes the owner).');
 }
 
+// Start HTTP Web & Validation API server on Railway
 startApiServer(client);
 
-client.login(process.env.DISCORD_TOKEN);
+// Connect Discord Bot
+const token = (process.env.DISCORD_TOKEN || '').trim();
+if (!token || token === 'your-bot-token-here') {
+  console.warn('⚠️ DISCORD_TOKEN is missing or not set.');
+  console.warn('🌐 Web landing page & validation API are active on Railway.');
+  console.warn('👉 To connect the Discord bot, set DISCORD_TOKEN in Railway (Service -> Variables tab) or .env');
+} else {
+  client.login(token).catch((err) => {
+    console.error('❌ Failed to log in to Discord:', err.message);
+    console.error('👉 Please verify your DISCORD_TOKEN in Railway Variables / .env');
+  });
+}

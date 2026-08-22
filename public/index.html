@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!--
+    ============================================================
+    Protect-Vmax — Landing page
+    ============================================================
+    PLACEHOLDERS TO EDIT (also mirrored as JS constants at the top
+    of script.js — the JS values are what actually render):
+
+      DISCORD_INVITE_LINK  -> your permanent Discord server invite
+                              (Server Settings -> Invites -> Never expire)
+      API_HOST             -> your bot's public URL
+                              (e.g. https://discord-project-production-cc27.up.railway.app)
+      API_TOKEN            -> shown as "YOUR_API_TOKEN" in the code sample.
+                              ⚠️ NEVER paste your real token into a public page —
+                              it is a secret and anyone could steal & abuse it.
+      SCRIPT_NAME          -> the script name you registered with /setup
+                              (example used here: "luasnapper")
+      LOADER_PATH          -> the endpoint the short loadstring loader fetches
+                              (example used here: "/api/v1/load")
+      DISCORD_TICKET_URL   -> where the "buy" buttons link (your ticket channel / bot link)
+      PRICING              -> the Free / Enjoy / Vmax prices (edit the cards below)
+    ============================================================
+  -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Protect-Vmax — Protect your Lua scripts. Effortlessly.</title>
+  <meta name="description" content="Protect-Vmax is a Lua script whitelist & protection service. Generate keys, lock them to your buyers' hardware, and validate every user through one authenticated API." />
+
+  <!-- Favicon (inline SVG, monochrome) -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+
+  <!-- Fonts (Google Fonts CDN) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Animated gradient background (white/black orbs + vignette) -->
+  <div class="bg-orbs" aria-hidden="true">
+    <span class="orb orb-1"></span>
+    <span class="orb orb-2"></span>
+    <span class="orb orb-3"></span>
+    <span class="orb orb-4"></span>
+  </div>
+
+  <!-- ============================= NAV ============================= -->
+  <header class="nav" id="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="#hero" aria-label="Protect-Vmax home">
+        <span class="brand-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l7 3v5c0 4.6-3 8.2-7 10-4-1.8-7-5.4-7-10V6l7-3z" />
+            <path d="M9 12l2 2 4-4" />
+          </svg>
+        </span>
+        <span class="brand-name">Protect-<span class="gradient-text">Vmax</span></span>
+      </a>
+
+      <nav class="nav-links" id="nav-links" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How it works</a>
+        <a href="#api">API</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+
+      <div class="nav-auth" id="nav-auth">
+        <a class="btn btn-primary btn-sm" id="nav-login" href="#" data-login>Log in</a>
+        <div class="user-chip" id="nav-user" hidden>
+          <a class="user-link" id="nav-user-link" href="dashboard.html" aria-label="Open dashboard">
+            <img class="user-avatar" id="nav-avatar" alt="" />
+            <span class="user-name" id="nav-username"></span>
+          </a>
+          <button class="user-logout" id="nav-logout" type="button">Log out</button>
+        </div>
+      </div>
+
+      <button class="hamburger" id="hamburger" aria-label="Toggle menu" aria-expanded="false" aria-controls="nav-links">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+  </header>
+
+  <main>
+
+    <!-- ============================= HERO ============================= -->
+    <section class="hero" id="hero">
+      <!-- fading dot-grid behind the hero -->
+      <div class="hero-grid" aria-hidden="true"></div>
+
+      <div class="container hero-inner">
+        <div class="hero-copy">
+          <span class="pill reveal">
+            <span class="pill-dot" aria-hidden="true"></span>
+            Now with key drops &amp; auto-panels
+          </span>
+
+          <h1 class="reveal">
+            Protect your <span class="gradient-text gradient-shimmer">Lua scripts</span>.
+            <br />Effortlessly.
+          </h1>
+
+          <p class="hero-sub reveal">
+            Protect-Vmax is a Lua script whitelist &amp; protection service. Generate keys,
+            lock them to your buyers&rsquo; hardware, and let your loader validate every user
+            through one authenticated API.
+          </p>
+
+          <div class="hero-cta reveal">
+            <a class="btn btn-primary" href="#" data-ticket target="_blank" rel="noopener">
+              Get started
+            </a>
+            <a class="btn btn-ghost" href="#" data-discord target="_blank" rel="noopener">
+              Join our Discord
+            </a>
+            <a class="btn btn-ghost" href="#how-it-works">
+              See how it works
+            </a>
+          </div>
+
+          <dl class="stats reveal">
+            <div class="stat">
+              <dt>16+</dt>
+              <dd>Commands</dd>
+            </div>
+            <div class="stat">
+              <dt>100%</dt>
+              <dd>HWID locked</dd>
+            </div>
+            <div class="stat">
+              <dt>1</dt>
+              <dd>Validation API</dd>
+            </div>
+            <div class="stat">
+              <dt>24/7</dt>
+              <dd>Online</dd>
+            </div>
+          </dl>
+        </div>
+
+        <!-- Floating mock whitelist panel + key chips (decorative) -->
+        <div class="hero-visual reveal" aria-hidden="true">
+          <div class="float-panel glass">
+            <div class="panel-head">
+              <div class="panel-title">
+                <span class="panel-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 3l7 3v5c0 4.6-3 8.2-7 10-4-1.8-7-5.4-7-10V6l7-3z" />
+                  </svg>
+                </span>
+                <div>
+                  <span class="panel-name" data-script-name>luasnapper</span>
+                  <span class="panel-sub">Whitelist panel · online</span>
+                </div>
+              </div>
+              <span class="live-dot" title="online"></span>
+            </div>
+
+            <div class="panel-buttons">
+              <button class="panel-btn" type="button" tabindex="-1">Redeem Key</button>
+              <button class="panel-btn" type="button" tabindex="-1">My Key</button>
+              <button class="panel-btn" type="button" tabindex="-1">Reset HWID</button>
+            </div>
+
+            <div class="key-chip">
+              <span class="key-chip-check">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              <div class="key-chip-text">
+                <span class="key-valid">Valid · HWID bound</span>
+                <span class="key-code">KEY-A1B2-C3D4-E5F6</span>
+              </div>
+            </div>
+
+            <div class="keydrop">
+              <div class="keydrop-label">
+                <span class="keydrop-title">Keydrop · live</span>
+                <span class="keydrop-count" id="keydrop-count">00:12</span>
+              </div>
+              <div class="keydrop-track">
+                <div class="keydrop-bar" id="keydrop-bar"></div>
+              </div>
+            </div>
+          </div>
+
+          <span class="float-chip chip-1">KEY-7F3A-9Q2B</span>
+          <span class="float-chip chip-2">HWID bound</span>
+          <span class="float-chip chip-3">+50 keys dropped</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= FEATURES ============================= -->
+    <section class="section features" id="features">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="eyebrow">Features</span>
+          <h2>Everything you need to <span class="gradient-text">protect &amp; sell</span></h2>
+          <p>Whitelist your Lua scripts with hardware locking, a Discord bot, key drops and a full validation API — all in one place.</p>
+        </div>
+
+        <div class="grid cards">
+          <article class="card glass reveal">
+            <span class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2.5"/><path d="M8 11V8a4 4 0 018 0v3"/></svg></span>
+            <h3>HWID Locking</h3>
+            <p>First run binds the key to the buyer&rsquo;s device. Share the key and the hardware won&rsquo;t match — access is denied.</p>
+          </article>
+
+          <article class="card glass reveal">
+            <span class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="3.5"/><path d="M12 8V4"/><circle cx="12" cy="3.5" r="1.6"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/><path d="M9.5 16.5h5"/></svg></span>
+            <h3>Discord Whitelist Bot</h3>
+            <p>One-click panels let users redeem keys, view their key and reset HWID — no commands to memorize.</p>
+          </article>
+
+          <article class="card glass reveal">
+            <span class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="3.8"/><path d="M10.5 12.5L20 3"/><path d="M16 7l2 2"/><path d="M13 10l2 2"/></svg></span>
+            <h3>Key Generation &amp; Keydrops</h3>
+            <p>Create single or bulk keys with expiry, or drop keys publicly on a live countdown your community can grab.</p>
+          </article>
+
+          <article class="card glass reveal">
+            <span class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg></span>
+            <h3>Blacklist &amp; Revoke</h3>
+            <p>Delete keys instantly and blacklist users forever — even brand-new keys won&rsquo;t work for them.</p>
+          </article>
+
+          <article class="card glass reveal">
+            <span class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M7 9l3 3-3 3"/><path d="M13 15h4"/></svg></span>
+            <h3>Full Validation API</h3>
+            <p>An authenticated REST endpoint your loader calls to validate keys — fast, simple and ready to paste in.</p>
+          </article>
+
+          <article class="card glass reveal">
+            <span class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg></span>
+            <h3>Expiry &amp; Auto-Renewal</h3>
+            <p>Offer 1/3/7/30-day keys. Active users renew automatically, so you keep earning without chasing invoices.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= HOW IT WORKS ============================= -->
+    <section class="section how" id="how-it-works">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="eyebrow">How it works</span>
+          <h2>Set up in <span class="gradient-text">four steps</span></h2>
+          <p>From adding the bot to locking your first customer&rsquo;s hardware in minutes.</p>
+        </div>
+
+        <ol class="steps">
+          <li class="step reveal">
+            <span class="step-num">01</span>
+            <h3>Add the bot &amp; <code>/claimowner</code></h3>
+            <p>Invite Protect-Vmax to your server and claim ownership so only you can manage keys.</p>
+          </li>
+          <li class="step reveal">
+            <span class="step-num">02</span>
+            <h3><code>/setup</code> + <code>/bulkgen</code></h3>
+            <p>Register your script and generate keys one-by-one or in bulk, with or without expiry.</p>
+          </li>
+          <li class="step reveal">
+            <span class="step-num">03</span>
+            <h3><code>/whitelist</code> buyers or <code>/keydrop</code></h3>
+            <p>Whitelist buyers manually, or start a public countdown key drop your community can claim.</p>
+          </li>
+          <li class="step reveal">
+            <span class="step-num">04</span>
+            <h3>Loader calls the API &amp; HWID locks</h3>
+            <p>Your loader validates each key through the API and locks it to that device on first use.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============================= API ============================= -->
+    <section class="section api" id="api">
+      <div class="container api-grid">
+        <div class="api-copy reveal">
+          <span class="eyebrow">Loader &amp; API</span>
+          <h2>One line to load. <span class="gradient-text">One endpoint to validate.</span></h2>
+          <p>
+            Ship a single <code class="inline-code">loadstring</code> to your buyers — it fetches
+            your script from the Protect-Vmax host and locks the key to their hardware.
+            Under the hood it validates against
+            <code class="inline-code">GET /api/v1/validate</code>. The response
+            <code class="inline-code">status</code> tells you exactly what to do.
+          </p>
+
+          <ul class="codes">
+            <li><code>hwid_bound</code><span>First run — key is now locked to this device.</span></li>
+            <li><code>hwid_ok</code><span>Key valid and HWID matches. Access granted.</span></li>
+            <li><code>blacklisted</code><span>User is permanently blocked.</span></li>
+            <li><code>hwid_mismatch</code><span>Key used on a different device.</span></li>
+            <li><code>expired</code><span>Key is past its expiry date.</span></li>
+          </ul>
+        </div>
+
+        <div class="code-card glass reveal">
+          <div class="code-head">
+            <div class="code-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+            <span class="code-file">loader.luau</span>
+            <button class="copy-btn" id="copy-btn" type="button" aria-label="Copy code">Copy</button>
+          </div>
+          <pre class="code-block"><code id="code-block"></code></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= PRICING ============================= -->
+    <section class="section pricing" id="pricing">
+      <div class="container">
+        <div class="section-head reveal">
+          <span class="eyebrow">Pricing</span>
+          <h2>Simple <span class="gradient-text">black &amp; white</span> plans</h2>
+          <p>Start free. Upgrade when your scripts take off. Buying is handled through a Discord ticket.</p>
+        </div>
+
+        <div class="pricing-grid">
+          <!-- ✏️ PRICING: edit tier names / prices / features here -->
+          <article class="price-card glass reveal">
+            <h3>Starter</h3>
+            <div class="price"><span class="price-amount">Free</span><span class="price-per">forever</span></div>
+            <p class="price-desc">Everything you need to protect your first script.</p>
+            <ul class="price-features">
+              <li>Unlimited scripts</li>
+              <li>HWID locking</li>
+              <li>Key drops &amp; key generation</li>
+              <li>Discord whitelist bot</li>
+              <li>Full validation API</li>
+              <li>Community support</li>
+            </ul>
+            <a class="btn btn-ghost btn-block" href="#" data-discord target="_blank" rel="noopener">Get started free</a>
+          </article>
+
+          <article class="price-card glass reveal">
+            <h3>Enjoy</h3>
+            <div class="price"><span class="price-amount">$2</span><span class="price-per">/mo</span></div>
+            <p class="price-desc">More power for growing sellers.</p>
+            <ul class="price-features">
+              <li>Everything in Starter</li>
+              <li>1/3/7/30-day expiry &amp; auto-renewal</li>
+              <li>Bulk key generation</li>
+              <li>Blacklist &amp; revoke</li>
+              <li>Priority support</li>
+            </ul>
+            <a class="btn btn-ghost btn-block" href="#" data-ticket target="_blank" rel="noopener">Create ticket · $2</a>
+            <p class="ticket-note">Opens a Discord ticket to buy Enjoy.</p>
+          </article>
+
+          <article class="price-card price-featured glass reveal">
+            <span class="price-tag">Most popular</span>
+            <h3>Vmax</h3>
+            <div class="price"><span class="price-amount">$5</span><span class="price-per">/mo</span></div>
+            <p class="price-desc">The full flagship experience for serious sellers.</p>
+            <ul class="price-features">
+              <li>Everything in Enjoy</li>
+              <li>Managed 24/7 hosting</li>
+              <li>Custom branding</li>
+              <li>Early access to new features</li>
+              <li>1-on-1 setup help</li>
+            </ul>
+            <a class="btn btn-primary btn-block" href="#" data-ticket target="_blank" rel="noopener">Create ticket · $5</a>
+            <p class="ticket-note">Opens a Discord ticket to buy Vmax.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= FAQ ============================= -->
+    <section class="section faq" id="faq">
+      <div class="container faq-inner">
+        <div class="section-head reveal">
+          <span class="eyebrow">FAQ</span>
+          <h2>Questions, <span class="gradient-text">answered</span></h2>
+        </div>
+
+        <div class="faq-list">
+          <div class="faq-item reveal">
+            <button class="faq-q" aria-expanded="false">
+              <span>What is HWID locking?</span>
+              <span class="faq-icon" aria-hidden="true"></span>
+            </button>
+            <div class="faq-a"><div><p>A key is bound to your customer&rsquo;s hardware the first time it is used. If someone shares the key, the device won&rsquo;t match and the key is rejected.</p></div></div>
+          </div>
+
+          <div class="faq-item reveal">
+            <button class="faq-q" aria-expanded="false">
+              <span>How do my users get keys?</span>
+              <span class="faq-icon" aria-hidden="true"></span>
+            </button>
+            <div class="faq-a"><div><p>They redeem keys through the Discord panel, buy them from you directly, or grab them from a public key drop. You create the keys with a single command or in bulk.</p></div></div>
+          </div>
+
+          <div class="faq-item reveal">
+            <button class="faq-q" aria-expanded="false">
+              <span>Can keys expire?</span>
+              <span class="faq-icon" aria-hidden="true"></span>
+            </button>
+            <div class="faq-a"><div><p>Yes — 1, 3, 7 and 30-day keys are supported. Once a key passes its expiry it stops validating until renewed, and active users can renew automatically.</p></div></div>
+          </div>
+
+          <div class="faq-item reveal">
+            <button class="faq-q" aria-expanded="false">
+              <span>What happens when I blacklist someone?</span>
+              <span class="faq-icon" aria-hidden="true"></span>
+            </button>
+            <div class="faq-a"><div><p>Their hardware is blocked, every key they hold stops working, and even fresh keys are rejected — they&rsquo;re locked out for good.</p></div></div>
+          </div>
+
+          <div class="faq-item reveal">
+            <button class="faq-q" aria-expanded="false">
+              <span>Can I use my own Discord bot?</span>
+              <span class="faq-icon" aria-hidden="true"></span>
+            </button>
+            <div class="faq-a"><div><p>Protect-Vmax runs as its own managed bot — just add it to your server and run <code class="inline-code">/claimowner</code>. Custom branding and hosting are available on the Vmax plan.</p></div></div>
+          </div>
+
+          <div class="faq-item reveal">
+            <button class="faq-q" aria-expanded="false">
+              <span>How do I check a key from my script?</span>
+              <span class="faq-icon" aria-hidden="true"></span>
+            </button>
+            <div class="faq-a"><div><p>Call <code class="inline-code">GET /api/v1/validate</code> with your API token and script name. The response status tells you if the key is valid, bound, expired or blacklisted — see the example on this page.</p></div></div>
+          </div>
+
+          <div class="faq-item reveal">
+            <button class="faq-q" aria-expanded="false">
+              <span>How do I buy Enjoy or Vmax?</span>
+              <span class="faq-icon" aria-hidden="true"></span>
+            </button>
+            <div class="faq-a"><div><p>Click a plan&rsquo;s buy button — it opens a Discord ticket in our server. We&rsquo;ll confirm your plan, take payment, and set everything up for you. Starter is always free.</p></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================= CTA ============================= -->
+    <section class="section cta" id="cta">
+      <div class="container">
+        <div class="cta-box reveal">
+          <h2>Ready to protect your scripts?</h2>
+          <p>Join our Discord, create a ticket, and lock your first key in minutes.</p>
+          <div class="cta-actions">
+            <a class="btn btn-primary btn-lg" href="#" data-discord target="_blank" rel="noopener">Join our Discord</a>
+            <a class="btn btn-ghost btn-lg" href="#" data-ticket target="_blank" rel="noopener">Create a ticket</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============================= FOOTER ============================= -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <a class="brand" href="#hero" aria-label="Protect-Vmax home">
+          <span class="brand-logo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3l7 3v5c0 4.6-3 8.2-7 10-4-1.8-7-5.4-7-10V6l7-3z" />
+              <path d="M9 12l2 2 4-4" />
+            </svg>
+          </span>
+          <span class="brand-name">Protect-<span class="gradient-text">Vmax</span></span>
+        </a>
+        <p>Lua script whitelist &amp; protection — keys, HWID locking and validation, made effortless.</p>
+      </div>
+
+      <div class="footer-cols">
+        <div class="footer-col">
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="#how-it-works">How it works</a>
+          <a href="#api">API</a>
+          <a href="#pricing">Pricing</a>
+        </div>
+        <div class="footer-col">
+          <h4>Resources</h4>
+          <a href="#" data-discord target="_blank" rel="noopener">Discord</a>
+          <a href="#" data-discord target="_blank" rel="noopener">Support</a>
+          <a href="#" data-discord target="_blank" rel="noopener">Status</a>
+          <a href="#faq">FAQ</a>
+        </div>
+        <div class="footer-col">
+          <h4>Legal</h4>
+          <a href="#">Terms</a>
+          <a href="#">Privacy</a>
+          <a href="#">License</a>
+        </div>
+      </div>
+    </div>
+    <div class="container footer-bottom">
+      <p>&copy; <span id="year">2026</span> Protect-Vmax. All rights reserved.</p>
+      <p class="footer-mono">Built in black &amp; white.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+  <script src="auth.js"></script>
+</body>
+</html>

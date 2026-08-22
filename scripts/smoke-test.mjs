@@ -7,6 +7,8 @@ import { join } from 'node:path';
 process.env.DATA_DIR = mkdtempSync(join(tmpdir(), 'keysys-'));
 process.env.API_TOKEN = 'test-token';
 process.env.KEY_PREFIX = 'LSN';
+process.env.PORT = '3999';
+process.env.API_PORT = '3999';
 
 const keySystem = await import('../src/lib/keySystem.js');
 const keys = await import('../src/lib/keys.js');
@@ -169,6 +171,56 @@ function get(path, headers = {}) {
 let res = await get('/health');
 assert.equal(res.status, 200);
 assert.equal((await res.json()).ok, true);
+
+// info endpoint
+res = await get('/api/v1/info');
+assert.equal(res.status, 200);
+let infoBody = await res.json();
+assert.equal(infoBody.status, 'ok');
+assert.equal(infoBody.name, 'Protect-Vmax');
+assert.equal(infoBody.credit, 'Zwoz');
+
+// static web landing page & dashboard serving
+res = await get('/');
+assert.equal(res.status, 200);
+let indexHtml = await res.text();
+assert.match(indexHtml, /Protect-Vmax/);
+
+res = await get('/dashboard.html');
+assert.equal(res.status, 200);
+assert.match(await res.text(), /Dashboard/);
+
+res = await get('/auth.js');
+assert.equal(res.status, 200);
+assert.match(await res.text(), /PVAuth/);
+
+res = await get('/dashboard.js');
+assert.equal(res.status, 200);
+
+res = await get('/dashboard.css');
+assert.equal(res.status, 200);
+
+res = await get('/styles.css');
+assert.equal(res.status, 200);
+assert.match(await res.text(), /--bg/);
+
+res = await get('/script.js');
+assert.equal(res.status, 200);
+
+res = await get('/favicon.svg');
+assert.equal(res.status, 200);
+
+// dashboard user API endpoint
+res = await get('/api/user/12345');
+assert.equal(res.status, 200);
+let userBody = await res.json();
+assert.ok(userBody.apiKey.startsWith('VMAX-'));
+assert.ok(Array.isArray(userBody.scripts));
+
+// healthz endpoint
+res = await get('/healthz');
+assert.equal(res.status, 200);
+assert.equal(await res.text(), 'ok');
 
 // validate is PUBLIC now (scripts call it at runtime without the API token)
 res = await get('/api/v1/validate?key=BADKEY&hwid=X&script=luasnapper');
