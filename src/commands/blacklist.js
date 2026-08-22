@@ -9,6 +9,7 @@ import {
 } from '../lib/keySystem.js';
 import { formatKey } from '../lib/keys.js';
 import { sendLog, clientEmbed } from '../lib/notify.js';
+import { fetchRoleMembers } from '../lib/util.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -101,10 +102,12 @@ export default {
     await interaction.deferReply({ ephemeral: true });
     let members;
     try {
-      await interaction.guild.members.fetch();
-      members = [...(await interaction.guild.roles.fetch(role.id)).members.values()];
+      members = await fetchRoleMembers(interaction.guild, role.id);
     } catch {
-      return interaction.editReply({ content: '❌ Could not fetch role members (missing permission?).' });
+      return interaction.editReply({
+        content:
+          '❌ Could not fetch role members. Enable **Server Members Intent** in the Discord Developer Portal (Bot → Privileged Gateway Intents).',
+      });
     }
 
     let blacklisted = 0;

@@ -3,6 +3,8 @@ import { claimKey } from '../lib/keySystem.js';
 import { formatKey } from '../lib/keys.js';
 import { sendLog, clientEmbed } from '../lib/notify.js';
 import { grantBuyerRole } from '../lib/roles.js';
+import { loaderMessage } from '../lib/loader.js';
+import { db } from '../lib/store.js';
 
 const CLAIM_MESSAGES = {
   invalid: 'That does not look like a valid key. Check for missing/extra characters.',
@@ -41,8 +43,12 @@ export default {
     );
     await grantBuyerRole(interaction.client, interaction.guild?.id, result.record.script, interaction.user.id);
 
+    const script = result.record.script;
+    const extra = db.scriptsources?.[script]?.source
+      ? `\n\n${loaderMessage(script, result.raw)}`
+      : '\nRun the script — the first run binds this account (HWID) to it.';
     await interaction.reply({
-      content: `✅ You are whitelisted for **${result.record.script}**!\nYour key: \`${formatKey(result.raw)}\`\nRun the script — the first run binds this account (HWID) to it.`,
+      content: `✅ You are whitelisted for **${script}**!\nYour key: \`${formatKey(result.raw)}\`${extra}`,
       ephemeral: true,
     });
   },

@@ -30,14 +30,37 @@ local __V = {
   script   = "${luaEscape(script || '')}",
 }
 
+local function __V_hwid()
+  if type(__V.hwid) == "string" and __V.hwid ~= "" then
+    return __V.hwid
+  end
+  local candidates = {}
+  if type(gethwid) == "function" then table.insert(candidates, gethwid) end
+  if type(get_hwid) == "function" then table.insert(candidates, get_hwid) end
+  if type(syn) == "table" and type(syn.get_hwid) == "function" then
+    table.insert(candidates, syn.get_hwid)
+  end
+  table.insert(candidates, function()
+    return game:GetService("RbxAnalyticsService"):GetClientId()
+  end)
+  for _, fn in ipairs(candidates) do
+    local ok, id = pcall(fn)
+    if ok and id and tostring(id) ~= "" then
+      return tostring(id)
+    end
+  end
+  error("[Protect-Vmax] Could not read device ID (HWID).", 2)
+end
+
 -- Whitelist check — call the Protect-Vmax API before anything else runs.
 local __V_check = function()
+  local hwid = __V_hwid()
   local url = __V.endpoint .. "/api/v1/validate?key=" .. __V.key
-        .. "&hwid=" .. __V.hwid .. "&script=" .. __V.script
+        .. "&hwid=" .. hwid .. "&script=" .. __V.script
   local ok, res
   if (request) then
     ok, res = pcall(request, { Url = url, Method = "GET" })
-  elseif (game and game:GetService and game:GetService("HttpService")) then
+  elseif (game and game.GetService and game:GetService("HttpService")) then
     ok, res = pcall(game:GetService("HttpService").HttpGet, game:GetService("HttpService"), url, true)
   else
     error("[Protect-Vmax] No HTTP library found — use an executor with request() or HttpService.", 2)

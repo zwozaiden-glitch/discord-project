@@ -3,6 +3,8 @@ import { ensureAdmin } from '../lib/permissions.js';
 import { ensureScript, makeKey } from '../lib/keySystem.js';
 import { formatKey } from '../lib/keys.js';
 import { sendDM } from '../lib/notify.js';
+import { loaderMessage } from '../lib/loader.js';
+import { db } from '../lib/store.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -43,6 +45,8 @@ export default {
     const duration = interaction.options.getString('duration') || 'never';
     const user = interaction.options.getUser('user');
 
+    if (user) await interaction.deferReply({ ephemeral: true });
+
     const record = await ensureScript(script);
     const raw = makeKey(record.name, {
       duration,
@@ -52,14 +56,15 @@ export default {
 
     const formatted = formatKey(raw);
     const content = `🔑 Key for **${record.name}** (\`${duration}\`):\n\`\`\`\n${formatted}\n\`\`\``;
+    const hasSource = Boolean(db.scriptsources?.[record.name]?.source);
 
     if (user) {
-      const sent = await sendDM(interaction.client, user.id, {
-        content: `🎫 You have been whitelisted for **${record.name}**!\nYour key: \`${formatted}\`\nRun the script — the first run binds this account (HWID) to it.`,
-      });
-      return interaction.reply({
+      const dmBody = hasSource
+        ? `🎫 You have been whitelisted for **${record.name}**!\nYour key: \`${formatted}\`\n\n${loaderMessage(record.name, raw)}`
+        : `🎫 You have been whitelisted for **${record.name}**!\nYour key: \`${formatted}\`\nRun the script — the first run binds this account (HWID) to it.`;
+      const sent = await sendDM(interaction.client, user.id, { content: dmBody });
+      return interaction.editReply({
         content: `${content}\n✅ User <@${user.id}> whitelisted${sent ? '' : ' — ⚠️ could not DM them, send the key yourself!'}`,
-        ephemeral: true,
       });
     }
 

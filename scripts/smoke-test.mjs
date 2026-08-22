@@ -140,8 +140,23 @@ const { protectSource } = await import('../src/lib/protect.js');
 const protectedSrc = protectSource('print("hi")', { script: 'luasnapper', key: 'LSN-TEST1', hwid: 'H1', endpoint: 'http://localhost:3000' });
 assert.ok(protectedSrc.includes('PROTECT-VMAX'), 'preamble markers');
 assert.ok(protectedSrc.includes('__V_check()'), 'runtime check included');
+assert.ok(protectedSrc.includes('__V_hwid()'), 'runtime HWID detection included');
 assert.ok(protectedSrc.includes('print("hi")'), 'original source kept');
 assert.ok(protectedSrc.includes('Owner  : Zwoz'), 'credit in wrapped source');
+
+const { buildLoader } = await import('../src/lib/loader.js');
+const loader = buildLoader('Vmax', raw3);
+assert.ok(loader.includes('-- Protect-Vmax loader — Vmax'), 'loader header');
+assert.ok(loader.includes('local key = "'), 'loader key var');
+assert.ok(loader.includes('/api/v1/load?script=Vmax&key=" .. key'), 'loader concatenates key');
+assert.ok(loader.includes('loadstring(game:HttpGet('), 'loader uses HttpGet');
+assert.ok(loader.includes('https://discord-project-production-a058.up.railway.app'), 'loader uses the public host');
+
+// skipHwid lets /load succeed without a device id
+const skipKey = makeKey('luasnapper', { claimedBy: 'user-skip', duration: 'never' });
+const skip = validateKey({ inputKey: skipKey, script: 'luasnapper', skipHwid: true });
+assert.equal(skip.status, 'valid', 'skipHwid accepts a valid key');
+assert.ok(['key_ok', 'key_unbound'].includes(skip.code), 'skipHwid code');
 
 // --- API ---
 const api = await import('../src/lib/api.js');
@@ -172,16 +187,21 @@ body = await res.json();
 assert.equal(body.code, 'hwid_bound');
 assert.equal(body.discord_id, 'user-9');
 
-// load endpoint: valid key returns protected source
-res = await get(`/api/v1/load?script=luasnapper&key=${encodeURIComponent(rawApi)}&hwid=MY-HWID`);
+// load endpoint: valid key returns protected source (HWID not required)
+res = await get(`/api/v1/load?script=luasnapper&key=${encodeURIComponent(rawApi)}`);
 assert.equal(res.status, 200);
 const loaded = await res.text();
 assert.ok(loaded.includes('PROTECT-VMAX'), 'load returns protected source');
 assert.ok(loaded.includes('print("hello from protected script")'), 'load includes original source');
 assert.ok(loaded.includes('Owner  : Zwoz'), 'load credits Zwoz');
+assert.ok(loaded.includes('__V_hwid()'), 'load includes runtime HWID detection');
 
-// load endpoint: wrong device rejected
+// load endpoint: still serves source even if a different hwid is passed (binding happens at validate time)
 res = await get(`/api/v1/load?script=luasnapper&key=${encodeURIComponent(rawApi)}&hwid=OTHER-DEVICE`);
+assert.equal(res.status, 200, 'load is key-only; HWID is checked when the script runs');
+
+// validate still rejects a different device
+res = await get(`/api/v1/validate?key=${encodeURIComponent(rawApi)}&hwid=OTHER-DEVICE&script=luasnapper`);
 assert.equal(res.status, 403);
 body = await res.json();
 assert.equal(body.code, 'hwid_mismatch');

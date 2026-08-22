@@ -237,7 +237,8 @@ export function startApiServer(client) {
       const script = url.searchParams.get('script') || '';
       const key = url.searchParams.get('key') || '';
       const hwid = url.searchParams.get('hwid') || '';
-      const result = validateKey({ inputKey: key, hwid, script, ip });
+      // Loader only ships the key — HWID is bound later by the wrapped script.
+      const result = validateKey({ inputKey: key, hwid, script, ip, skipHwid: true });
       recordValidation({ script, code: result.code, key, hwid, ip });
       if (result.status !== 'valid') return json(res, 403, result);
 

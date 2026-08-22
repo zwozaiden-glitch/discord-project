@@ -8,12 +8,13 @@ import { formatKey } from './keys.js';
 import { sendLog, clientEmbed } from './notify.js';
 import { grantBuyerRole } from './roles.js';
 import { db as storeDb } from './store.js';
+import { buildLoader, loadEndpoint, loaderMessage } from './loader.js';
 
-export function loadStringUrl(script, key, hwid = '') {
-  const base = CONFIG.publicUrl || `http://localhost:${CONFIG.apiPort}`;
-  const params = new URLSearchParams({ script, key, hwid });
-  return `${base}/api/v1/load?${params.toString()}`;
+export function loadStringUrl(script, key) {
+  return `${loadEndpoint(script)}${encodeURIComponent(key || '')}`;
 }
+
+export { buildLoader, loaderMessage };
 
 function button(id, label, style, emoji) {
   return new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style).setEmoji(emoji);
@@ -143,10 +144,12 @@ export async function handlePanelInteraction(interaction) {
     );
     await grantBuyerRole(interaction.client, interaction.guild?.id, script, interaction.user.id);
 
-    await interaction.reply({
-      content: `✅ You are whitelisted for **${script}**!\nYour key: \`${formatKey(result.raw)}\`\nRun the script — the first run binds this account to it.`,
-      ephemeral: true,
-    });
+    const redeemed =
+      `✅ You are whitelisted for **${script}**!\nYour key: \`${formatKey(result.raw)}\`` +
+      (storeDb.scriptsources?.[script]?.source
+        ? `\n\n${loaderMessage(script, result.raw)}`
+        : '\nRun the script — the first run binds this account to it.');
+    await interaction.reply({ content: redeemed, ephemeral: true });
     return true;
   }
 
@@ -166,12 +169,9 @@ export async function handlePanelInteraction(interaction) {
       });
       return true;
     }
-    const loadUrl = loadStringUrl(script, formatKey(entry.key), 'YOUR_HWID');
     await interaction.reply({
       content:
-        `📦 **Get your script — ${script}**\n\n` +
-        `Copy this into your executor (replace \`YOUR_HWID\` with your device ID):\n` +
-        `\`\`\`lua\nloadstring(game:HttpGet("${loadUrl}", true))()\n\`\`\`\n` +
+        `${loaderMessage(script, entry.key)}\n` +
         `The first run locks it to this device. HWID locked by **Protect-Vmax** · made by ${CONFIG.creditName}.`,
       ephemeral: true,
     });

@@ -30,19 +30,8 @@ export const CONFIG = {
   apiPort: positiveNumber(process.env.API_PORT || process.env.PORT, 3000),
 
   // Public URL of the bot (Railway domain) — used for loadstrings / script URLs.
-  publicUrl,
-
-  // Discord OAuth2 login (the website's "Login with Discord" button redirects
-  // to Discord, which sends the browser back to <publicUrl>/callback).
-  // The client ID is the same Application ID used for the bot (CLIENT_ID).
-  discordClientId: (process.env.DISCORD_CLIENT_ID || process.env.CLIENT_ID || '').trim(),
-  discordClientSecret: (process.env.DISCORD_CLIENT_SECRET || '').trim(),
-  // Must EXACTLY match a Redirect URI registered in the Developer Portal
-  // (OAuth2 -> Redirects). Defaults to PUBLIC_URL + "/callback".
-  oauthRedirectUri: (process.env.DISCORD_OAUTH_REDIRECT_URI || (publicUrl ? `${publicUrl}/callback` : '')).trim(),
-
-  // Optional "Back to site" button shown on the OAuth success page.
-  websiteUrl: (process.env.WEBSITE_URL || '').trim(),
+  // Falls back to the current production host so loaders work even if PUBLIC_URL is unset.
+  publicUrl: (process.env.PUBLIC_URL || 'https://discord-project-production-a058.up.railway.app').trim().replace(/\/+$/, ''),
 
   // Credit shown on panels/scripts (default Zwoz).
   creditName: (process.env.CREDIT_NAME || 'Zwoz').trim(),

@@ -18,6 +18,7 @@ Your bot now has a complete license-key system, like the Luarmor-style bots you'
 |---|---|---|
 | `/setup script: name [channel] [description]` | Admin | Posts the interactive panel (**Redeem Key / Get Script / My Key / Reset HWID** buttons) |
 | `/apply script: name file: script.lua [overwrite]` | Owner/Admin | Uploads your script — the bot wraps it with the whitelist check and serves a protected loadstring |
+| `/getscript script: name [user]` | Everyone | Gives you the Protect-Vmax loader (admins can fetch another user's) |
 | `/setbuyerrole role: @Buyers [script] [clear]` | Owner/Admin | Auto-assigns a role when users redeem (per script or all) |
 | `/analytics [script]` | Owner/Admin | Run analytics: per-day chart, top keys, recent activity (masked) |
 | `/credits` | Everyone | Shows the credit — Protect-Vmax by **Zwoz** |
@@ -72,7 +73,7 @@ A countdown embed counts down, then reveals 3 keys in chat. Users run `/redeem <
 `/setup` posts this into a channel (users just click buttons — no commands needed):
 
 - **🎫 Redeem Key** — opens a modal, user types their key → instantly whitelisted + buyer role
-- **📦 Get Script** — gives the user their protected loadstring (with their key embedded)
+- **📦 Get Script** — gives the user their Protect-Vmax loader (key already filled in)
 - **🔑 My Key** — shows their key + HWID binding status
 - **🔄 Reset HWID** — unbinds their HWID (cooldown applies)
 
@@ -88,14 +89,20 @@ Example:
    /apply script: luasnapper file: myscript.lua
    ```
 2. The bot stores the protected script (max 512 KB) and wraps it with a **runtime whitelist check** — it validates the key + HWID against the API before your code runs.
-3. Users click **📦 Get Script** on the panel and get:
+3. Users click **📦 Get Script** on the panel (or run `/getscript`) and get:
    ```lua
-   loadstring(game:HttpGet("https://YOUR-HOST/api/v1/load?script=luasnapper&key=LSN-...&hwid=YOUR_HWID", true))()
-   ```
-4. First run binds their HWID. The wrapped source is credited to **Zwoz**.
+   -- Protect-Vmax loader — luasnapper
 
-> ⚠️ Set `PUBLIC_URL` in Railway Variables (e.g. `https://your-service.up.railway.app`) — it's used in every loadstring.
-> The `/api/v1/load` endpoint needs the key + HWID to serve the source, so only whitelisted users can fetch it.
+   local key = "LSN-XXXXX-XXXXX-XXXXX" -- your user's key
+
+   loadstring(game:HttpGet(
+       "https://discord-project-production-a058.up.railway.app/api/v1/load?script=luasnapper&key=" .. key
+   ))()
+   ```
+4. First run binds their HWID automatically. The wrapped source is credited to **Zwoz**.
+
+> Loadstrings use `PUBLIC_URL` (default `https://discord-project-production-a058.up.railway.app`).
+> The `/api/v1/load` endpoint only needs a valid key to serve the source. HWID is bound the first time the script runs.
 
 ## Auto buyer roles
 
@@ -141,7 +148,7 @@ Example response:
 }
 ```
 
-**`GET /api/v1/load?script=<script>&key=<KEY>&hwid=<HWID>`** — returns the **protected Lua source** (validates first; 403 + JSON if the key/HWID is invalid). Public + rate-limited — this is what `loadstring(game:HttpGet(...))` fetches.
+**`GET /api/v1/load?script=<script>&key=<KEY>`** — returns the **protected Lua source** (validates the key first; 403 + JSON if the key is invalid). Public + rate-limited — this is what `loadstring(game:HttpGet(...))` fetches. HWID is checked later when the wrapped script calls `/validate`.
 
 **`GET /api/v1/status?user_id=<discord-id>&script=<script>`** — whitelist/blacklist status + key info for a user. *(token required)*
 **`GET /api/v1/key?key=<KEY>`** — one key's record (claimed by, hwid, expiry). *(token required)*
@@ -179,7 +186,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 local KEY = "LSN-ABCDE-FGHJK-MNPQR"   -- inserted by your loader
 local HWID = your_hwid_function()
 local resp = request({
-  Url = "https://your-bot-host/api/v1/validate?key=" .. KEY .. "&hwid=" .. HWID .. "&script=luasnapper",
+  Url = "https://discord-project-production-a058.up.railway.app/api/v1/validate?key=" .. KEY .. "&hwid=" .. HWID .. "&script=luasnapper",
   Headers = { ["Authorization"] = "Bearer YOUR_SECRET_TOKEN" },
   Method = "GET"
 })
@@ -218,6 +225,7 @@ KEY_PREFIX=LSN
 RESET_COOLDOWN_DAYS=7
 KEYDROP_COUNTDOWN=10
 SUPPORT_URL=https://discord.gg/...
+PUBLIC_URL=https://discord-project-production-a058.up.railway.app
 API_PORT=3000
 # DATA_DIR=/data            # Railway volume
 ```
