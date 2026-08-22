@@ -74,14 +74,17 @@ export default {
     await interaction.deferReply({ ephemeral: true });
     let members;
     try {
-      members = [...(await interaction.guild.members.fetch()).filter((m) => m.roles.cache.has(role.id))];
+      members = await fetchRoleMembers(interaction.guild, role.id);
     } catch {
-      return interaction.editReply({ content: '❌ Could not fetch guild members (missing permission?).' });
+      return interaction.editReply({
+        content:
+          '❌ Could not fetch role members. Enable **Server Members Intent** in the Discord Developer Portal (Bot → Privileged Gateway Intents).',
+      });
     }
 
     let removed = 0;
     const keys = [];
-    for (const [, member] of members) {
+    for (const member of members) {
       const result = deleteUserKey(record.name, member.id);
       if (result.removed) {
         removed += 1;

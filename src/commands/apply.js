@@ -96,16 +96,12 @@ export default {
     );
 
     const loader = buildLoader(record.name, null);
-    const publicHint = CONFIG.publicUrl
-      ? ''
-      : `\n⚠️ Set \`PUBLIC_URL\` in Railway Variables to your domain (e.g. \`https://your-service.up.railway.app\`) so loadstrings use the real URL.`;
 
     await interaction.editReply({
       content:
         `✅ **${record.name}** is protected! (v${db.scriptsources[scriptName].version}, ${(source.length / 1024).toFixed(1)} KB)\n\n` +
         `Users get this from **📦 Get Script** or \`/getscript\`:\n` +
         `\`\`\`lua\n${loader}\n\`\`\`\n` +
-        publicHint +
         `\nProtected by **Protect-Vmax** · made by ${CONFIG.creditName}.`,
     });
   },

@@ -28,7 +28,8 @@ export const CONFIG = {
   apiPort: positiveNumber(process.env.API_PORT || process.env.PORT, 3000),
 
   // Public URL of the bot (Railway domain) — used for loadstrings / script URLs.
-  publicUrl: (process.env.PUBLIC_URL || '').trim(),
+  // Falls back to the current production host so loaders work even if PUBLIC_URL is unset.
+  publicUrl: (process.env.PUBLIC_URL || 'https://discord-project-production-a058.up.railway.app').trim().replace(/\/+$/, ''),
 
   // Credit shown on panels/scripts (default Zwoz).
   creditName: (process.env.CREDIT_NAME || 'Zwoz').trim(),

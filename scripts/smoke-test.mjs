@@ -150,6 +150,7 @@ assert.ok(loader.includes('-- Protect-Vmax loader — Vmax'), 'loader header');
 assert.ok(loader.includes('local key = "'), 'loader key var');
 assert.ok(loader.includes('/api/v1/load?script=Vmax&key=" .. key'), 'loader concatenates key');
 assert.ok(loader.includes('loadstring(game:HttpGet('), 'loader uses HttpGet');
+assert.ok(loader.includes('https://discord-project-production-a058.up.railway.app'), 'loader uses the public host');
 
 // skipHwid lets /load succeed without a device id
 const skipKey = makeKey('luasnapper', { claimedBy: 'user-skip', duration: 'never' });

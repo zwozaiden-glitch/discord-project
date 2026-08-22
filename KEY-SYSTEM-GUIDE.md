@@ -96,12 +96,12 @@ Example:
    local key = "LSN-XXXXX-XXXXX-XXXXX" -- your user's key
 
    loadstring(game:HttpGet(
-       "https://YOUR-HOST/api/v1/load?script=luasnapper&key=" .. key
+       "https://discord-project-production-a058.up.railway.app/api/v1/load?script=luasnapper&key=" .. key
    ))()
    ```
 4. First run binds their HWID automatically. The wrapped source is credited to **Zwoz**.
 
-> ⚠️ Set `PUBLIC_URL` in Railway Variables (e.g. `https://your-service.up.railway.app`) — it's used in every loadstring.
+> Loadstrings use `PUBLIC_URL` (default `https://discord-project-production-a058.up.railway.app`).
 > The `/api/v1/load` endpoint only needs a valid key to serve the source. HWID is bound the first time the script runs.
 
 ## Auto buyer roles
@@ -186,7 +186,7 @@ curl -H "Authorization: Bearer YOUR_TOKEN" \
 local KEY = "LSN-ABCDE-FGHJK-MNPQR"   -- inserted by your loader
 local HWID = your_hwid_function()
 local resp = request({
-  Url = "https://your-bot-host/api/v1/validate?key=" .. KEY .. "&hwid=" .. HWID .. "&script=luasnapper",
+  Url = "https://discord-project-production-a058.up.railway.app/api/v1/validate?key=" .. KEY .. "&hwid=" .. HWID .. "&script=luasnapper",
   Headers = { ["Authorization"] = "Bearer YOUR_SECRET_TOKEN" },
   Method = "GET"
 })
@@ -225,6 +225,7 @@ KEY_PREFIX=LSN
 RESET_COOLDOWN_DAYS=7
 KEYDROP_COUNTDOWN=10
 SUPPORT_URL=https://discord.gg/...
+PUBLIC_URL=https://discord-project-production-a058.up.railway.app
 API_PORT=3000
 # DATA_DIR=/data            # Railway volume
 ```
