@@ -16,7 +16,11 @@ Your bot now has a complete license-key system, like the Luarmor-style bots you'
 
 | Command | Who | What it does |
 |---|---|---|
-| `/setup script: name [channel] [description]` | Admin | Posts the interactive panel (Redeem Key / My Key / Reset HWID buttons) |
+| `/setup script: name [channel] [description]` | Admin | Posts the interactive panel (**Redeem Key / Get Script / My Key / Reset HWID** buttons) |
+| `/apply script: name file: script.lua [overwrite]` | Owner/Admin | Uploads your script — the bot wraps it with the whitelist check and serves a protected loadstring |
+| `/setbuyerrole role: @Buyers [script] [clear]` | Owner/Admin | Auto-assigns a role when users redeem (per script or all) |
+| `/analytics [script]` | Owner/Admin | Run analytics: per-day chart, top keys, recent activity (masked) |
+| `/credits` | Everyone | Shows the credit — Protect-Vmax by **Zwoz** |
 | `/unsetup script: name` | Admin | Deletes the panel |
 | `/generatekey script: name [duration] [user]` | Admin | Makes one unredeemed key (only you see it). With `user:`, whitelists them immediately |
 | `/bulkgen script: name amount: N [duration]` | Admin | Makes N unredeemed keys (only you see them) |
@@ -67,7 +71,8 @@ A countdown embed counts down, then reveals 3 keys in chat. Users run `/redeem <
 
 `/setup` posts this into a channel (users just click buttons — no commands needed):
 
-- **🎫 Redeem Key** — opens a modal, user types their key → instantly whitelisted
+- **🎫 Redeem Key** — opens a modal, user types their key → instantly whitelisted + buyer role
+- **📦 Get Script** — gives the user their protected loadstring (with their key embedded)
 - **🔑 My Key** — shows their key + HWID binding status
 - **🔄 Reset HWID** — unbinds their HWID (cooldown applies)
 
@@ -75,6 +80,33 @@ Example:
 ```
 /setup script: luasnapper channel: #whitelist description: "Buy a key from #shop, then redeem it here."
 ```
+
+## Script protection (`/apply`)
+
+1. Upload your `.lua` / `.luau` file:
+   ```
+   /apply script: luasnapper file: myscript.lua
+   ```
+2. The bot stores the protected script (max 512 KB) and wraps it with a **runtime whitelist check** — it validates the key + HWID against the API before your code runs.
+3. Users click **📦 Get Script** on the panel and get:
+   ```lua
+   loadstring(game:HttpGet("https://YOUR-HOST/api/v1/load?script=luasnapper&key=LSN-...&hwid=YOUR_HWID", true))()
+   ```
+4. First run binds their HWID. The wrapped source is credited to **Zwoz**.
+
+> ⚠️ Set `PUBLIC_URL` in Railway Variables (e.g. `https://your-service.up.railway.app`) — it's used in every loadstring.
+> The `/api/v1/load` endpoint needs the key + HWID to serve the source, so only whitelisted users can fetch it.
+
+## Auto buyer roles
+
+```
+/setbuyerrole role: @Buyers              # assign @Buyers on every redeem
+/setbuyerrole role: @Luasnapper script: luasnapper   # only for one script
+/setbuyerrole clear: true                # stop assigning
+```
+Everyone who redeems (via panel or `/redeem`) or is whitelisted by admin gets the role automatically. Note: the bot needs **Manage Roles** permission.
+
+You can also whitelist an entire role at once: `/whitelist script: luasnapper role: @Buyers` (every member gets a key by DM).
 
 ---
 
@@ -109,9 +141,13 @@ Example response:
 }
 ```
 
-**`GET /api/v1/status?user_id=<discord-id>&script=<script>`** — whitelist/blacklist status + key info for a user.
-**`GET /api/v1/key?key=<KEY>`** — one key's record (claimed by, hwid, expiry).
+**`GET /api/v1/load?script=<script>&key=<KEY>&hwid=<HWID>`** — returns the **protected Lua source** (validates first; 403 + JSON if the key/HWID is invalid). Public + rate-limited — this is what `loadstring(game:HttpGet(...))` fetches.
+
+**`GET /api/v1/status?user_id=<discord-id>&script=<script>`** — whitelist/blacklist status + key info for a user. *(token required)*
+**`GET /api/v1/key?key=<KEY>`** — one key's record (claimed by, hwid, expiry). *(token required)*
 **`GET /health`** — bot is up (no auth needed).
+
+> 🔓 `/api/v1/validate` and `/api/v1/load` are public (no token) because protected scripts call them at runtime — they're rate-limited per IP and only reveal validity. **Never call your real payment/admin flows with them.** `/api/v1/status` & `/api/v1/key` still require the API token.
 
 ### Auth
 

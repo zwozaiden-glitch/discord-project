@@ -2,6 +2,7 @@ import { SlashCommandBuilder } from 'discord.js';
 import { claimKey } from '../lib/keySystem.js';
 import { formatKey } from '../lib/keys.js';
 import { sendLog, clientEmbed } from '../lib/notify.js';
+import { grantBuyerRole } from '../lib/roles.js';
 
 const CLAIM_MESSAGES = {
   invalid: 'That does not look like a valid key. Check for missing/extra characters.',
@@ -38,6 +39,7 @@ export default {
       ),
       interaction.guild?.id
     );
+    await grantBuyerRole(interaction.client, interaction.guild?.id, result.record.script, interaction.user.id);
 
     await interaction.reply({
       content: `✅ You are whitelisted for **${result.record.script}**!\nYour key: \`${formatKey(result.raw)}\`\nRun the script — the first run binds this account (HWID) to it.`,
