@@ -1,276 +1,281 @@
-/**
- * ==============================================================================
- * PROTECT-VMAX — Web Frontend Script
- * Connected to Discord Bot & Validation API on Railway
- *
- * OWNER CUSTOMIZATION:
- * Replace the constants below to match your setup:
- * ==============================================================================
- */
-const CONFIG = {
-  // Your permanent Discord server invite link:
-  DISCORD_INVITE_LINK: 'https://discord.gg/yourserver',
+/* ==========================================================================
+   Protect-Vmax — script.js
+   All interactivity for index.html:
+   Discord links, Luau code sample + copy, scroll reveal, mobile menu,
+   FAQ accordion, keydrop countdown, nav state, footer year.
+   ========================================================================== */
 
-  // Your public Railway API host (auto-detects current domain):
-  API_HOST: window.location.origin,
+/* ==========================================================================
+   ✏️  EDIT THESE — site configuration
+   These are the ONLY values you should need to change.
+   --------------------------------------------------------------------------
+   DISCORD_INVITE  -> your permanent server invite
+                      (Server Settings -> Invites -> "Never expire" -> copy link)
+   API_HOST        -> your bot's public URL (Railway public domain, e.g.
+                      https://discord-project-production-cc27.up.railway.app)
+   API_TOKEN       -> shown as "YOUR_API_TOKEN" in the example. ⚠️ NEVER paste
+                      your REAL token into a public page — it is a secret.
+   SCRIPT_NAME     -> the script name you registered with /setup (e.g. "luasnapper")
+   LOADER_PATH     -> the endpoint the short loadstring loader fetches
+                      (e.g. "/api/v1/load")
+   DISCORD_TICKET_URL -> where the pricing "buy" buttons link. Point this at your
+                      ticket channel invite or ticket-bot link.
+   PRICING         -> reference only; also update the prices in index.html
+                      (the three pricing cards).
+   ========================================================================== */
+const DISCORD_INVITE = "https://discord.gg/xFeX95Evce";
+const API_HOST = "https://discord-project-production-a058.up.railway.app";
+const API_TOKEN = "A2F7o-nCC04ed2SrUMftZmXQJ37qvvEn";
+const SCRIPT_NAME = "Vmax";
+const LOADER_PATH = "/api/v1/load";
+const DISCORD_TICKET_URL = "https://discord.gg/xFeX95Evce";
+const PRICING = { starter: "Free", enjoy: "$2/mo", vmax: "$5/mo" };
+const KEYDROP_SECONDS = 12; // length of the demo keydrop countdown
 
-  // Default script name used in previews and code blocks:
-  SCRIPT_NAME: 'luasnapper',
-
-  // Example API Token shown in docs:
-  API_TOKEN: 'YOUR_API_TOKEN',
-};
-
-document.addEventListener('DOMContentLoaded', () => {
-  initDiscordLinks();
-  initBotStatusCheck();
-  initCodeBlockAndCopy();
-  initKeydropSimulation();
-  initFaqAccordion();
-  initMobileMenu();
-  initScrollReveal();
-  initKeyTester();
-  initFooterYear();
+/* ==========================================================================
+   1. Link wiring
+   ========================================================================== */
+document.querySelectorAll("[data-discord]").forEach(function (a) {
+  a.href = DISCORD_INVITE;
 });
 
-/**
- * Connects all Discord CTA buttons to the configured invite link.
- */
-function initDiscordLinks() {
-  const discordLinks = document.querySelectorAll('.discord-link-target');
-  discordLinks.forEach((link) => {
-    link.href = CONFIG.DISCORD_INVITE_LINK;
-    link.target = '_blank';
-    link.rel = 'noopener noreferrer';
-  });
+document.querySelectorAll("[data-ticket]").forEach(function (a) {
+  a.href = DISCORD_TICKET_URL;
+});
+
+document.querySelectorAll("[data-script-name]").forEach(function (el) {
+  el.textContent = SCRIPT_NAME;
+});
+
+/* ==========================================================================
+   2. Luau loader code sample (rendered with monochrome syntax highlighting)
+   ========================================================================== */
+// NOTE: keep the lines flush-left — leading whitespace is rendered verbatim.
+const CODE_SAMPLE = `-- Protect-Vmax loader — ${SCRIPT_NAME}
+local key = "KEY-XXXX-XXXX" -- your user's key
+
+loadstring(game:HttpGet(
+    "${API_HOST}${LOADER_PATH}?script=${SCRIPT_NAME}&key=" .. key
+))()`;
+
+const LUAU_BUILTINS = new Set([
+  "game", "workspace", "script", "print", "warn", "error", "typeof", "tick",
+  "wait", "spawn", "task", "string", "table", "math", "pairs", "ipairs",
+  "HttpService", "GetService", "RequestAsync", "JSONDecode", "format", "get",
+  "loadstring", "HttpGet",
+]);
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
-/**
- * Checks the live status of the bot / web server via /health and /api/v1/info.
- */
-async function initBotStatusCheck() {
-  const badge = document.getElementById('botStatusBadge');
-  if (!badge) return;
+function highlightLua(src) {
+  // Order matters: comments & strings are captured before bare identifiers.
+  const re =
+    /(--[^\n]*)|("(?:[^"\\]|\\.)*")|(\b(?:local|function|end|if|then|elseif|else|return|for|while|do|nil|true|false|and|or|not)\b)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_][A-Za-z0-9_]*)/g;
 
-  const dot = badge.querySelector('.status-dot');
-  const label = badge.querySelector('.status-label');
+  let out = "";
+  let last = 0;
+  let m;
 
+  while ((m = re.exec(src)) !== null) {
+    out += escapeHtml(src.slice(last, m.index));
+
+    const token = m[0];
+    let cls = "c-ident";
+
+    if (m[1]) cls = "c-comment";
+    else if (m[2]) cls = "c-string";
+    else if (m[3]) cls = "c-keyword";
+    else if (m[4]) cls = "c-number";
+    else if (m[5]) cls = LUAU_BUILTINS.has(m[5]) ? "c-builtin" : "c-ident";
+
+    out += '<span class="' + cls + '">' + escapeHtml(token) + "</span>";
+    last = m.index + token.length;
+  }
+
+  out += escapeHtml(src.slice(last));
+  return out;
+}
+
+const codeBlock = document.getElementById("code-block");
+if (codeBlock) {
+  codeBlock.innerHTML = highlightLua(CODE_SAMPLE);
+}
+
+/* Copy button */
+const copyBtn = document.getElementById("copy-btn");
+
+function fallbackCopy(text) {
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  ta.setAttribute("readonly", "");
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
   try {
-    const res = await fetch('/health', { cache: 'no-store' });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.ok) {
-        label.textContent = data.bot && data.bot !== 'starting' ? `Online: ${data.bot}` : 'Railway Online';
-        dot.style.backgroundColor = '#ffffff';
-        dot.style.boxShadow = '0 0 8px #ffffff';
-      }
-    } else {
-      label.textContent = 'Server Active';
-    }
-  } catch (err) {
-    label.textContent = 'Bot Standby';
-    dot.style.backgroundColor = '#888888';
-    dot.style.boxShadow = 'none';
+    document.execCommand("copy");
+  } catch (e) {
+    /* ignore */
   }
+  document.body.removeChild(ta);
 }
 
-/**
- * Updates the Luau loader code block with the active host and enables 1-click copy.
- */
-function initCodeBlockAndCopy() {
-  const codeBlock = document.getElementById('luauCodeBlock');
-  const copyBtn = document.getElementById('copyCodeBtn');
-  if (!codeBlock || !copyBtn) return;
+if (copyBtn) {
+  copyBtn.addEventListener("click", function () {
+    const done = function () {
+      copyBtn.textContent = "Copied!";
+      copyBtn.classList.add("copied");
+      setTimeout(function () {
+        copyBtn.textContent = "Copy";
+        copyBtn.classList.remove("copied");
+      }, 1800);
+    };
 
-  const origin = window.location.origin.includes('localhost')
-    ? 'https://discord-project-production-a058.up.railway.app'
-    : window.location.origin;
-
-  const rawLuau = [
-    `-- Protect-Vmax loader — ${CONFIG.SCRIPT_NAME}`,
-    '-- Protected & Verified by Zwoz',
-    '',
-    'local key = "LSN-98X2K-4M19Q-Z9A2B" -- user key',
-    '',
-    'loadstring(game:HttpGet(',
-    `    "${origin}/api/v1/load?script=${CONFIG.SCRIPT_NAME}&key=" .. key`,
-    '))()',
-  ].join('\n');
-
-  codeBlock.innerHTML = `
-<span class="token-comment">-- Protect-Vmax loader — ${CONFIG.SCRIPT_NAME}</span>
-<span class="token-comment">-- Protected &amp; Verified by Zwoz</span>
-
-<span class="token-keyword">local</span> key = <span class="token-string">"LSN-98X2K-4M19Q-Z9A2B"</span> <span class="token-comment">-- user key</span>
-
-<span class="token-function">loadstring</span>(game:<span class="token-function">HttpGet</span>(
-    <span class="token-string">"${origin}/api/v1/load?script=${CONFIG.SCRIPT_NAME}&amp;key="</span> .. key
-))()`.trim();
-
-  copyBtn.addEventListener('click', async () => {
-    try {
-      await navigator.clipboard.writeText(rawLuau);
-      const textSpan = copyBtn.querySelector('.copy-text');
-      const originalText = textSpan.textContent;
-      textSpan.textContent = 'Copied!';
-      copyBtn.style.borderColor = '#ffffff';
-      setTimeout(() => {
-        textSpan.textContent = originalText;
-        copyBtn.style.borderColor = '';
-      }, 2000);
-    } catch {
-      // Fallback prompt if clipboard API blocked
-      window.prompt('Copy loader code:', rawLuau);
-    }
-  });
-}
-
-/**
- * Simulates a live countdown keydrop animation on the mock Discord panel.
- */
-function initKeydropSimulation() {
-  const timer = document.getElementById('keydropTimer');
-  const bar = document.getElementById('keydropBar');
-  if (!timer || !bar) return;
-
-  let totalSeconds = 10;
-  let remaining = totalSeconds;
-
-  setInterval(() => {
-    remaining -= 1;
-    if (remaining < 0) {
-      remaining = totalSeconds;
-    }
-    const secStr = remaining < 10 ? `0${remaining}` : `${remaining}`;
-    timer.textContent = `00:${secStr}`;
-    const pct = (remaining / totalSeconds) * 100;
-    bar.style.width = `${pct}%`;
-  }, 1000);
-}
-
-/**
- * Handles FAQ accordion open / close toggle.
- */
-function initFaqAccordion() {
-  const questions = document.querySelectorAll('.faq-question');
-  questions.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const item = btn.parentElement;
-      const isOpen = item.classList.contains('active');
-
-      // Close all others
-      document.querySelectorAll('.faq-item').forEach((el) => {
-        el.classList.remove('active');
-        el.querySelector('.faq-question').setAttribute('aria-expanded', 'false');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(CODE_SAMPLE).then(done, function () {
+        fallbackCopy(CODE_SAMPLE);
+        done();
       });
-
-      if (!isOpen) {
-        item.classList.add('active');
-        btn.setAttribute('aria-expanded', 'true');
-      }
-    });
+    } else {
+      fallbackCopy(CODE_SAMPLE);
+      done();
+    }
   });
 }
 
-/**
- * Mobile navigation menu hamburger toggle.
- */
-function initMobileMenu() {
-  const toggle = document.getElementById('menuToggle');
-  const nav = document.getElementById('mainNav');
-  if (!toggle || !nav) return;
+/* ==========================================================================
+   3. Scroll reveal (IntersectionObserver)
+   ========================================================================== */
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  toggle.addEventListener('click', () => {
-    nav.classList.toggle('open');
+const revealEls = document.querySelectorAll(".reveal");
+
+if (reducedMotion || !("IntersectionObserver" in window)) {
+  revealEls.forEach(function (el) {
+    el.classList.add("is-visible");
   });
-
-  nav.querySelectorAll('.nav-link').forEach((link) => {
-    link.addEventListener('click', () => {
-      nav.classList.remove('open');
-    });
-  });
-}
-
-/**
- * Scroll reveal animations via IntersectionObserver.
- */
-function initScrollReveal() {
-  const reveals = document.querySelectorAll('.reveal');
-  if (!('IntersectionObserver' in window)) {
-    reveals.forEach((el) => el.classList.add('revealed'));
-    return;
-  }
-
+} else {
   const observer = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
+    function (entries, obs) {
+      entries.forEach(function (entry) {
         if (entry.isIntersecting) {
-          entry.target.classList.add('revealed');
-          observer.unobserve(entry.target);
+          entry.target.classList.add("is-visible");
+          obs.unobserve(entry.target);
         }
       });
     },
-    { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+    { threshold: 0.12, rootMargin: "0px 0px -40px 0px" }
   );
 
-  reveals.forEach((el) => observer.observe(el));
+  revealEls.forEach(function (el) {
+    observer.observe(el);
+  });
 }
 
-/**
- * Interactive key validation tester.
- */
-function initKeyTester() {
-  const input = document.getElementById('testKeyInput');
-  const btn = document.getElementById('testKeyBtn');
-  const result = document.getElementById('testKeyResult');
-  if (!input || !btn || !result) return;
+/* ==========================================================================
+   4. Mobile hamburger menu
+   ========================================================================== */
+const hamburger = document.getElementById("hamburger");
+const navLinks = document.getElementById("nav-links");
 
-  btn.addEventListener('click', async () => {
-    const rawKey = input.value.trim();
-    if (!rawKey) {
-      result.style.display = 'block';
-      result.innerHTML = '<span style="color:#a3a3a3;">Please enter a key to test.</span>';
-      return;
-    }
+if (hamburger && navLinks) {
+  hamburger.addEventListener("click", function () {
+    const open = navLinks.classList.toggle("open");
+    hamburger.setAttribute("aria-expanded", open ? "true" : "false");
+  });
 
-    result.style.display = 'block';
-    result.innerHTML = '<span style="color:#a3a3a3;">Validating against API...</span>';
-
-    try {
-      const res = await fetch(`/api/v1/validate?key=${encodeURIComponent(rawKey)}&hwid=WEB-CLIENT-DEMO&script=${encodeURIComponent(CONFIG.SCRIPT_NAME)}`);
-      const data = await res.json();
-
-      if (data.status === 'valid') {
-        result.innerHTML = `✅ <strong style="color:#fff;">Valid Key</strong> (${data.code}) — Hardware locked to your session.`;
-      } else {
-        result.innerHTML = `❌ <strong style="color:#fff;">Rejected</strong>: <code>${data.code || data.message || 'invalid'}</code>`;
-      }
-    } catch {
-      result.innerHTML = '⚠️ Could not connect to the validation server.';
+  // Close the menu when a link inside it is clicked.
+  navLinks.addEventListener("click", function (e) {
+    if (e.target.tagName === "A") {
+      navLinks.classList.remove("open");
+      hamburger.setAttribute("aria-expanded", "false");
     }
   });
 }
 
-/**
- * Interactive demo action for mock panel buttons.
- */
-window.demoPanelAction = function (action) {
-  const messages = {
-    'Redeem Key': '🎫 Discord modal opens: users paste their key to claim whitelist access and auto-assign buyer roles.',
-    'Get Script': '📦 Discord responds with their personal loadstring containing their unique key.',
-    'My Key': '🔑 Shows the user their key status, expiration date, and bound hardware ID in an ephemeral embed.',
-    'Reset HWID': '🔄 Clears their bound device so they can switch PCs (subject to the configured cooldown).',
-  };
+/* ==========================================================================
+   5. FAQ accordion
+   ========================================================================== */
+document.querySelectorAll(".faq-item").forEach(function (item) {
+  const btn = item.querySelector(".faq-q");
 
-  alert(`[Discord Panel Demo — ${action}]\n\n${messages[action] || 'Action triggered.'}\n\nRun /setup in your server to create this panel!`);
-};
+  btn.addEventListener("click", function () {
+    const isOpen = item.classList.contains("open");
 
-/**
- * Sets current year in the footer.
- */
-function initFooterYear() {
-  const span = document.getElementById('yearSpan');
-  if (span) {
-    span.textContent = new Date().getFullYear();
+    // Close any other open item (one-at-a-time accordion).
+    document.querySelectorAll(".faq-item.open").forEach(function (openItem) {
+      if (openItem !== item) {
+        openItem.classList.remove("open");
+        openItem.querySelector(".faq-q").setAttribute("aria-expanded", "false");
+      }
+    });
+
+    item.classList.toggle("open", !isOpen);
+    btn.setAttribute("aria-expanded", !isOpen ? "true" : "false");
+  });
+});
+
+/* ==========================================================================
+   6. Keydrop countdown bar (live demo)
+   ========================================================================== */
+const countEl = document.getElementById("keydrop-count");
+const barEl = document.getElementById("keydrop-bar");
+
+function pad2(n) {
+  return String(n).padStart(2, "0");
+}
+
+if (countEl && barEl) {
+  if (reducedMotion) {
+    // Static, calm version for users who prefer reduced motion.
+    countEl.textContent = "LIVE";
+    barEl.style.width = "100%";
+  } else {
+    let kdStart = null;
+
+    function tickKeydrop() {
+      const now = performance.now();
+      if (kdStart === null) kdStart = now;
+
+      let elapsed = (now - kdStart) / 1000;
+      if (elapsed >= KEYDROP_SECONDS) {
+        kdStart = now; // loop the drop
+        elapsed = 0;
+      }
+
+      const remaining = KEYDROP_SECONDS - elapsed;
+      const secs = Math.ceil(remaining);
+      countEl.textContent = "00:" + pad2(secs);
+      barEl.style.width = (remaining / KEYDROP_SECONDS) * 100 + "%";
+    }
+
+    tickKeydrop();
+    setInterval(tickKeydrop, 200);
   }
 }
+
+/* ==========================================================================
+   7. Nav background on scroll
+   ========================================================================== */
+const nav = document.getElementById("nav");
+if (nav) {
+  function onScroll() {
+    nav.classList.toggle("scrolled", window.scrollY > 10);
+  }
+  window.addEventListener("scroll", onScroll, { passive: true });
+  onScroll();
+}
+
+/* ==========================================================================
+   8. Footer year (auto)
+   ========================================================================== */
+const yearEl = document.getElementById("year");
+if (yearEl) {
+  yearEl.textContent = new Date().getFullYear();
+}
+

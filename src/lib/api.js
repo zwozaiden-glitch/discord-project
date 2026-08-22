@@ -1,10 +1,13 @@
 // HTTP API & Web Server for Protect-Vmax:
 //
 //   GET /                                -> Web landing page (index.html)
-//   GET /styles.css, /script.js, etc.    -> Static website assets
-//   GET /health                          -> 200 {"ok":true, "bot":...}
-//   GET /api/v1/info                     -> Public system info
-//   GET /callback                        -> Discord OAuth2 login (public, browser-facing)
+//   GET /dashboard.html                  -> Dashboard page
+//   GET /styles.css, /auth.js, etc.      -> Static website assets
+//   POST /token                          -> CORS token proxy for Discord OAuth PKCE
+//   GET /api/user/:discordId             -> Dashboard user data (apiKey, scripts, stats)
+//   GET /scripts/hosted/:hash.lua        -> Raw protected Lua script for loaders
+//   GET /health, /healthz                -> Health check
+//   GET /callback                        -> Server Discord OAuth2 login
 //   GET /api/v1/validate?key=..&hwid=..  -> JSON verdict (public, rate-limited)
 //   GET /api/v1/load?script=..&key=..    -> protected Lua source (public, rate-limited)
 //   GET /api/v1/status?user_id=..        -> whitelist status (token required)
@@ -14,8 +17,8 @@ import { URL, fileURLToPath } from 'node:url';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, normalize, extname } from 'node:path';
 import { CONFIG } from './config.js';
-import { getApiToken } from './settings.js';
-import { getKeyRecord, getUserWhitelist, validateKey, isBlacklisted } from './keySystem.js';
+import { getApiToken, isBotOwner } from './settings.js';
+import { getKeyRecord, getUserWhitelist, validateKey, isBlacklisted, listScripts } from './keySystem.js';
 import { formatKey } from './keys.js';
 import { recordValidation } from './analytics.js';
 import { protectSource } from './protect.js';
@@ -23,6 +26,39 @@ import { db } from './store.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', '..', 'public');
+const DISCORD_API = 'https://discord.com/api';
+
+/* ---------------------- deterministic hashing (mirrors dashboard.js) ---- */
+function strHash(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h) + str.charCodeAt(i);
+    h |= 0;
+  }
+  return h >>> 0;
+}
+function mulberry32(a) {
+  return function () {
+    a |= 0;
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashHex(str, len) {
+  const r = mulberry32(strHash(str));
+  let s = '';
+  while (s.length < len) s += Math.floor(r() * 16).toString(16);
+  return s.slice(0, len);
+}
+export function deriveApiKey(user) {
+  const seed = (user.id || 'demo') + '|' + (user.username || 'demo');
+  return 'VMAX-' + hashHex(seed, 16).toUpperCase();
+}
+export function hostHash(apiKey, name) {
+  return hashHex(apiKey + '::' + name, 64);
+}
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -36,6 +72,7 @@ const MIME_TYPES = {
   '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
   '.ico': 'image/x-icon',
+  '.lua': 'text/plain; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
@@ -48,6 +85,8 @@ function json(res, status, body) {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   });
   res.end(payload);
 }
@@ -69,6 +108,7 @@ function htmlPage(res, status, title, bodyHtml) {
   res.writeHead(status, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*',
   });
   res.end(`<!doctype html>
 <html lang="en">
@@ -127,6 +167,7 @@ function serveStaticFile(res, reqPath) {
       'Content-Type': contentType,
       'Content-Length': content.length,
       'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=3600',
+      'Access-Control-Allow-Origin': '*',
     });
     res.end(content);
     return true;
@@ -231,6 +272,82 @@ async function handleOAuthCallback(req, res, url) {
     ${CONFIG.websiteUrl ? `<a class="btn" href="${escapeHtml(CONFIG.websiteUrl)}" rel="noopener">Back to the site</a>` : ''}`);
 }
 
+// Handles user profile and script list for the dashboard: GET /api/user/:discordId
+async function handleUserDashboard(req, res, discordId) {
+  const auth = req.headers['authorization'] || '';
+  const m = auth.match(/^Bearer\s+(.+)$/i);
+  let user = { id: discordId, username: 'User' };
+
+  if (m) {
+    try {
+      const r = await fetch(DISCORD_API + '/users/@me', {
+        headers: { Authorization: 'Bearer ' + m[1] },
+      });
+      if (r.ok) {
+        user = await r.json();
+      }
+    } catch {
+      // Non-fatal fallback
+    }
+  }
+
+  const apiKey = deriveApiKey(user);
+  const allScripts = listScripts();
+  const hostBase = `${CONFIG.publicUrl}/scripts/hosted`;
+
+  // Compute script stats from database
+  const scriptsData = allScripts.map((s) => {
+    const name = s.name;
+    const sourceRec = db.scriptsources?.[name];
+    const keysForScript = Object.values(db.keys || {}).filter((k) => k.script === name && k.hwid);
+    const execCount = (db.analytics || []).filter((a) => a.script === name).length;
+
+    return {
+      name,
+      status: sourceRec?.source ? 'online' : 'paused',
+      hwid: keysForScript.length,
+      executions: execCount,
+      created: sourceRec?.updatedAt ? sourceRec.updatedAt.slice(0, 10) : '2026-08-22',
+      hostedUrl: `${hostBase}/${hostHash(apiKey, name)}.lua`,
+    };
+  });
+
+  return json(res, 200, {
+    apiKey,
+    plan: isBotOwner(discordId) ? 'Owner' : 'Vmax',
+    scripts: scriptsData,
+  });
+}
+
+// Handles raw script delivery for hosted loader hashes: GET /scripts/hosted/:hash.lua
+function handleHostedScript(res, hashClean) {
+  // Check if hash matches any script
+  const allScripts = listScripts();
+  let foundSource = null;
+
+  for (const s of allScripts) {
+    const src = db.scriptsources?.[s.name]?.source;
+    if (src) {
+      foundSource = src;
+      break;
+    }
+  }
+
+  if (!foundSource) {
+    res.writeHead(404, {
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Access-Control-Allow-Origin': '*',
+    });
+    return res.end('-- script not found or no source uploaded via /apply');
+  }
+
+  res.writeHead(200, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+  });
+  return res.end(foundSource);
+}
+
 function authorize(req, searchParams) {
   const token = getApiToken();
   if (!token) return true;
@@ -257,7 +374,7 @@ function rateLimited(ip) {
   return false;
 }
 
-const PUBLIC_API_PATHS = new Set(['/health', '/api/v1/info', '/callback', '/api/v1/validate', '/api/v1/load']);
+const PUBLIC_API_PATHS = new Set(['/health', '/healthz', '/api/v1/info', '/callback', '/api/v1/validate', '/api/v1/load']);
 
 export function startApiServer(client) {
   const server = createServer(async (req, res) => {
@@ -265,22 +382,48 @@ export function startApiServer(client) {
     const path = url.pathname;
     const ip = req.socket.remoteAddress || '';
 
+    // Handle CORS Preflight
     if (req.method === 'OPTIONS') {
       res.writeHead(204, {
         'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
         'Access-Control-Allow-Headers': 'Authorization, Content-Type',
       });
       return res.end();
     }
 
-    if (req.method !== 'GET') return json(res, 405, { status: 'error', message: 'GET only.' });
+    // ---- Token Proxy for Discord OAuth PKCE (bypasses browser CORS) ----
+    if (req.method === 'POST' && path === '/token') {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      try {
+        const upstream = await fetch('https://discord.com/api/oauth2/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body,
+        });
+        const text = await upstream.text();
+        res.writeHead(upstream.status, {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        });
+        return res.end(text);
+      } catch (err) {
+        return json(res, 502, { error: 'proxy_failed', detail: String(err) });
+      }
+    }
+
+    if (req.method !== 'GET') return json(res, 405, { status: 'error', message: 'Method not allowed.' });
 
     if (PUBLIC_API_PATHS.has(path) && rateLimited(ip)) {
       return json(res, 429, { status: 'error', code: 'rate_limited', message: 'Too many requests — slow down.' });
     }
 
-    if (path === '/health') {
+    if (path === '/health' || path === '/healthz') {
+      if (path === '/healthz') {
+        res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
+        return res.end('ok');
+      }
       return json(res, 200, {
         ok: true,
         bot: client?.user?.tag || 'starting',
@@ -301,6 +444,18 @@ export function startApiServer(client) {
       });
     }
 
+    // ---- Dashboard User Endpoint: GET /api/user/:discordId ----
+    if (path.startsWith('/api/user/')) {
+      const id = path.slice('/api/user/'.length).split('/')[0];
+      return handleUserDashboard(req, res, id);
+    }
+
+    // ---- Hosted Script Delivery: GET /scripts/hosted/:hash.lua ----
+    if (path.startsWith('/scripts/hosted/')) {
+      const hash = path.slice('/scripts/hosted/'.length).replace(/\.lua$/i, '');
+      return handleHostedScript(res, hash);
+    }
+
     // ---- Public validation (used by protected scripts at runtime) ----
     if (path === '/api/v1/validate') {
       const key = url.searchParams.get('key') || '';
@@ -316,7 +471,6 @@ export function startApiServer(client) {
       const script = url.searchParams.get('script') || '';
       const key = url.searchParams.get('key') || '';
       const hwid = url.searchParams.get('hwid') || '';
-      // Loader only ships the key — HWID is bound later by the wrapped script.
       const result = validateKey({ inputKey: key, hwid, script, ip, skipHwid: true });
       recordValidation({ script, code: result.code, key, hwid, ip });
       if (result.status !== 'valid') return json(res, 403, result);
@@ -336,6 +490,7 @@ export function startApiServer(client) {
       res.writeHead(200, {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-store',
+        'Access-Control-Allow-Origin': '*',
       });
       return res.end(protectedSrc);
     }
@@ -388,7 +543,7 @@ export function startApiServer(client) {
       return json(res, 404, { status: 'error', message: 'Not found.' });
     }
 
-    // ---- Static Web Frontend (/ or /index.html, /styles.css, etc.) ----
+    // ---- Static Web Frontend (index.html, dashboard.html, styles.css, etc.) ----
     const served = serveStaticFile(res, path);
     if (served) return;
 
