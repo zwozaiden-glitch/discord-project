@@ -8,6 +8,7 @@ import {
 } from '../lib/keySystem.js';
 import { formatKey, maskKey } from '../lib/keys.js';
 import { sendDM, sendLog, clientEmbed } from '../lib/notify.js';
+import { grantBuyerRole } from '../lib/roles.js';
 
 export default {
   data: new SlashCommandBuilder()
@@ -88,11 +89,12 @@ export default {
           '✅ User whitelisted',
           `${interaction.user} whitelisted ${user} for **${record.name}** (${duration}).`,
           0x57f287,
-      ),
-      interaction.guild?.id
-    );
+        ),
+        interaction.guild?.id
+      );
+      await grantBuyerRole(interaction.client, interaction.guild?.id, record.name, user.id);
 
-    return interaction.reply({
+      return interaction.reply({
         content: `✅ Whitelisted <@${user.id}> for **${record.name}** \`(${duration})\`.\nKey: \`${formatted}\`${sent ? '' : '\n⚠️ Could not DM them — send the key yourself!'}`,
         ephemeral: true,
       });

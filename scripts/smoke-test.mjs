@@ -96,8 +96,8 @@ purgeExpired();
 assert.equal(isWhitelisted('luasnapper', 'user-4'), false, 'expired entry purged');
 assert.equal(validateKey({ inputKey: rawExp, hwid: 'X', script: 'luasnapper' }).code, 'voided');
 
-// --- settings: owner claim + log channel + api token ---
-const { claimOwner, isBotOwner, setLogChannel, getLogChannelId, ensureApiToken } = await import('../src/lib/settings.js');
+// --- settings: owner claim + log channel + api token + buyer role ---
+const { claimOwner, isBotOwner, setLogChannel, getLogChannelId, ensureApiToken, setBuyerRole, clearBuyerRole, getBuyerRole } = await import('../src/lib/settings.js');
 
 assert.equal(isBotOwner('user-1'), false, 'nobody is owner yet');
 let claim = claimOwner('user-1');
@@ -117,6 +117,32 @@ const apiTok = ensureApiToken();
 assert.equal(apiTok.token, 'test-token', 'env API_TOKEN takes priority');
 assert.equal(apiTok.generated, false);
 
+// --- buyer role ---
+setBuyerRole('guild-1', null, 'role-111');
+assert.equal(getBuyerRole('guild-1', 'luasnapper'), 'role-111', 'global buyer role');
+setBuyerRole('guild-1', 'luasnapper', 'role-222');
+assert.equal(getBuyerRole('guild-1', 'luasnapper'), 'role-222', 'per-script overrides global');
+assert.equal(getBuyerRole('guild-1', 'other script'), 'role-111', 'fallback to global');
+clearBuyerRole('guild-1', 'luasnapper');
+assert.equal(getBuyerRole('guild-1', 'luasnapper'), 'role-111', 'cleared per-script');
+
+// --- script upload + protected delivery ---
+const store = await import('../src/lib/store.js');
+store.db.scriptsources = store.db.scriptsources || {};
+store.db.scriptsources['luasnapper'] = {
+  name: 'luasnapper',
+  source: 'print("hello from protected script")',
+  version: 1,
+  updatedAt: new Date().toISOString(),
+  by: 'admin',
+};
+const { protectSource } = await import('../src/lib/protect.js');
+const protectedSrc = protectSource('print("hi")', { script: 'luasnapper', key: 'LSN-TEST1', hwid: 'H1', endpoint: 'http://localhost:3000' });
+assert.ok(protectedSrc.includes('PROTECT-VMAX'), 'preamble markers');
+assert.ok(protectedSrc.includes('__V_check()'), 'runtime check included');
+assert.ok(protectedSrc.includes('print("hi")'), 'original source kept');
+assert.ok(protectedSrc.includes('Owner  : Zwoz'), 'credit in wrapped source');
+
 // --- API ---
 const api = await import('../src/lib/api.js');
 const server = api.startApiServer({ user: { tag: 'TestBot#1' } });
@@ -129,22 +155,36 @@ let res = await get('/health');
 assert.equal(res.status, 200);
 assert.equal((await res.json()).ok, true);
 
+// validate is PUBLIC now (scripts call it at runtime without the API token)
 res = await get('/api/v1/validate?key=BADKEY&hwid=X&script=luasnapper');
-assert.equal(res.status, 401, 'api token required');
-
-res = await get('/api/v1/validate?key=BADKEY&hwid=X&script=luasnapper', { Authorization: 'Bearer test-token' });
-assert.equal(res.status, 403);
+assert.equal(res.status, 403, 'validate is public, returns verdict');
 let body = await res.json();
 assert.equal(body.code, 'invalid_key');
 
+// status/key still need the token
+res = await get('/api/v1/status?user_id=user-9&script=luasnapper');
+assert.equal(res.status, 401, 'status requires token');
+
 const rawApi = makeKey('luasnapper', { claimedBy: 'user-9', duration: 'never' });
-res = await get(`/api/v1/validate?key=${encodeURIComponent(rawApi)}&hwid=MY-HWID&script=luasnapper`, {
-  Authorization: 'Bearer test-token',
-});
+res = await get(`/api/v1/validate?key=${encodeURIComponent(rawApi)}&hwid=MY-HWID&script=luasnapper`);
 assert.equal(res.status, 200);
 body = await res.json();
 assert.equal(body.code, 'hwid_bound');
 assert.equal(body.discord_id, 'user-9');
+
+// load endpoint: valid key returns protected source
+res = await get(`/api/v1/load?script=luasnapper&key=${encodeURIComponent(rawApi)}&hwid=MY-HWID`);
+assert.equal(res.status, 200);
+const loaded = await res.text();
+assert.ok(loaded.includes('PROTECT-VMAX'), 'load returns protected source');
+assert.ok(loaded.includes('print("hello from protected script")'), 'load includes original source');
+assert.ok(loaded.includes('Owner  : Zwoz'), 'load credits Zwoz');
+
+// load endpoint: wrong device rejected
+res = await get(`/api/v1/load?script=luasnapper&key=${encodeURIComponent(rawApi)}&hwid=OTHER-DEVICE`);
+assert.equal(res.status, 403);
+body = await res.json();
+assert.equal(body.code, 'hwid_mismatch');
 
 res = await get(`/api/v1/status?user_id=user-9&script=luasnapper`, {
   Authorization: 'Bearer test-token',
@@ -153,6 +193,16 @@ body = await res.json();
 assert.equal(body.whitelisted, true);
 assert.equal(body.entries.length, 1);
 assert.equal(body.entries[0].hwid, 'MY-HWID');
+
+// analytics recorded by the API calls above
+const { analyticsStats } = await import('../src/lib/analytics.js');
+let stats = analyticsStats({ script: 'luasnapper' });
+assert.ok(stats.total >= 3, `analytics recorded (got ${stats.total})`);
+assert.ok(stats.byCode.hwid_bound >= 1, 'bound event recorded');
+assert.ok(stats.byCode.hwid_mismatch >= 1, 'mismatch event recorded');
+assert.ok(stats.byDay.length === 7, '7-day buckets');
+assert.ok(stats.topKeys.length >= 1, 'top keys computed');
+assert.ok(stats.recent[0].hwid.includes('…') || stats.recent[0].hwid.length <= 8, 'hwid masked');
 
 server.close();
 rmSync(process.env.DATA_DIR, { recursive: true, force: true });

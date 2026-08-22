@@ -7,7 +7,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..', '..', 'data');
 
-const COLLECTIONS = ['scripts', 'keys', 'whitelist', 'blacklist', 'cooldowns', 'panels', 'settings'];
+const COLLECTIONS = ['scripts', 'keys', 'whitelist', 'blacklist', 'cooldowns', 'panels', 'settings', 'scriptsources', 'analytics', 'buyerroles'];
+
+const DEFAULT_VALUES = {
+  analytics: [],
+};
 
 mkdirSync(DATA_DIR, { recursive: true });
 
@@ -18,7 +22,7 @@ for (const name of COLLECTIONS) {
   try {
     db[name] = JSON.parse(readFileSync(file, 'utf8'));
   } catch {
-    db[name] = {};
+    db[name] = DEFAULT_VALUES[name] ? structuredClone(DEFAULT_VALUES[name]) : {};
   }
 }
 

@@ -6,6 +6,14 @@ import { db, save } from './store.js';
 import { getScript, getUserWhitelist, claimKey, resetHwidForUser, getCooldownRemaining } from './keySystem.js';
 import { formatKey } from './keys.js';
 import { sendLog, clientEmbed } from './notify.js';
+import { grantBuyerRole } from './roles.js';
+import { db as storeDb } from './store.js';
+
+export function loadStringUrl(script, key, hwid = '') {
+  const base = CONFIG.publicUrl || `http://localhost:${CONFIG.apiPort}`;
+  const params = new URLSearchParams({ script, key, hwid });
+  return `${base}/api/v1/load?${params.toString()}`;
+}
 
 function button(id, label, style, emoji) {
   return new ButtonBuilder().setCustomId(id).setLabel(label).setStyle(style).setEmoji(emoji);
@@ -18,21 +26,27 @@ function row(...buttons) {
 export function panelEmbed(client, script, description) {
   const desc =
     description ||
-    `Whitelist yourself for **${script}** — redeem a key, check your key or reset your device (HWID) below.`;
+    `Whitelist yourself for **${script}** — redeem a key, get the script, check your key or reset your device (HWID) below.`;
   const embed = {
     title: `🔐 ${script}`,
     description: desc,
     color: 0x5865f2,
     timestamp: new Date().toISOString(),
   };
-  if (CONFIG.supportUrl) embed.footer = { text: `Need help? ${CONFIG.supportUrl}` };
-  else if (client?.user) embed.footer = { text: client.user.username };
+  if (CONFIG.supportUrl || CONFIG.creditName) {
+    embed.footer = { text: `${CONFIG.supportUrl ? `Need help? ${CONFIG.supportUrl} · ` : ''}by ${CONFIG.creditName}` };
+  } else if (client?.user) {
+    embed.footer = { text: client.user.username };
+  }
   return embed;
 }
 
 export function panelRows(script) {
   return [
-    row(button(`redeem:${script}`, 'Redeem Key', ButtonStyle.Primary, '🎫')),
+    row(
+      button(`redeem:${script}`, 'Redeem Key', ButtonStyle.Primary, '🎫'),
+      button(`getscript:${script}`, 'Get Script', ButtonStyle.Secondary, '📦')
+    ),
     row(
       button(`mykey:${script}`, 'My Key', ButtonStyle.Secondary, '🔑'),
       button(`resethwid:${script}`, 'Reset HWID', ButtonStyle.Success, '🔄')
@@ -96,7 +110,7 @@ const CLAIM_MESSAGES = {
 export async function handlePanelInteraction(interaction) {
   if (!interaction.isButton() && !interaction.isModalSubmit()) return false;
   const [action, script] = interaction.customId.split(':');
-  if (!['redeem', 'mykey', 'resethwid', 'redeemmodal'].includes(action)) return false;
+  if (!['redeem', 'getscript', 'mykey', 'resethwid', 'redeemmodal'].includes(action)) return false;
   if (!getScript(script)) {
     await interaction.reply({ content: '❌ This panel is for an unknown script.', ephemeral: true });
     return true;
@@ -127,9 +141,38 @@ export async function handlePanelInteraction(interaction) {
       ),
       interaction.guild?.id
     );
+    await grantBuyerRole(interaction.client, interaction.guild?.id, script, interaction.user.id);
 
     await interaction.reply({
       content: `✅ You are whitelisted for **${script}**!\nYour key: \`${formatKey(result.raw)}\`\nRun the script — the first run binds this account to it.`,
+      ephemeral: true,
+    });
+    return true;
+  }
+
+  if (action === 'getscript' && interaction.isButton()) {
+    const entry = getUserWhitelist(interaction.user.id, script)[0];
+    if (!entry) {
+      await interaction.reply({
+        content: '📦 You need a key first — press **🎫 Redeem Key** and enter your key.',
+        ephemeral: true,
+      });
+      return true;
+    }
+    if (!storeDb.scriptsources?.[script]?.source) {
+      await interaction.reply({
+        content: '📦 No script has been uploaded for this project yet — ask an admin to run `/apply`.',
+        ephemeral: true,
+      });
+      return true;
+    }
+    const loadUrl = loadStringUrl(script, formatKey(entry.key), 'YOUR_HWID');
+    await interaction.reply({
+      content:
+        `📦 **Get your script — ${script}**\n\n` +
+        `Copy this into your executor (replace \`YOUR_HWID\` with your device ID):\n` +
+        `\`\`\`lua\nloadstring(game:HttpGet("${loadUrl}", true))()\n\`\`\`\n` +
+        `The first run locks it to this device. HWID locked by **Protect-Vmax** · made by ${CONFIG.creditName}.`,
       ephemeral: true,
     });
     return true;

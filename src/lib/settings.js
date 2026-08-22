@@ -53,3 +53,33 @@ export function setLogChannel(guildId, channelId) {
   save('settings');
   return true;
 }
+
+// ---- Auto buyer role (assigned on redeem/whitelist) ----
+// Stored as "guildId" -> roleId (applies to every script) or
+// "guildId:script" -> roleId (applies to one script only).
+
+export function getBuyerRole(guildId, script) {
+  if (!guildId) return null;
+  const g = String(guildId);
+  return (
+    db.settings.buyerRoles?.[`${g}:${script}`] ||
+    db.settings.buyerRoles?.[g] ||
+    null
+  );
+}
+
+export function setBuyerRole(guildId, script, roleId) {
+  if (!guildId) return false;
+  db.settings.buyerRoles = db.settings.buyerRoles || {};
+  db.settings.buyerRoles[script ? `${guildId}:${script}` : String(guildId)] = String(roleId);
+  save('settings');
+  return true;
+}
+
+export function clearBuyerRole(guildId, script) {
+  if (!guildId) return false;
+  db.settings.buyerRoles = db.settings.buyerRoles || {};
+  delete db.settings.buyerRoles[script ? `${guildId}:${script}` : String(guildId)];
+  save('settings');
+  return true;
+}
