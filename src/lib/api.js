@@ -293,7 +293,7 @@ async function handleUserDashboard(req, res, discordId) {
 
   const apiKey = deriveApiKey(user);
   const allScripts = listScripts();
-  const hostBase = `${CONFIG.publicUrl}/scripts/hosted`;
+  const hostBase = `${CONFIG.publicUrl || `http://localhost:${CONFIG.apiPort}`}/scripts/hosted`;
 
   // Compute script stats from database
   const scriptsData = allScripts.map((s) => {
@@ -319,21 +319,56 @@ async function handleUserDashboard(req, res, discordId) {
   });
 }
 
-// Handles raw script delivery for hosted loader hashes: GET /scripts/hosted/:hash.lua
-function handleHostedScript(res, hashClean) {
-  // Check if hash matches any script
-  const allScripts = listScripts();
-  let foundSource = null;
+function findHostedSource(hashClean) {
+  if (!db.scriptsources) return null;
 
-  for (const s of allScripts) {
-    const src = db.scriptsources?.[s.name]?.source;
-    if (src) {
-      foundSource = src;
-      break;
+  // 1. Direct name match
+  if (db.scriptsources[hashClean]?.source) {
+    return db.scriptsources[hashClean].source;
+  }
+
+  const allScripts = listScripts();
+
+  // 2. Check known hashes for users & demo
+  const candidates = new Set(['demo|demo', '1000000000000000000|DemoUser']);
+  if (db.settings?.ownerId) {
+    candidates.add(`${db.settings.ownerId}|Owner`);
+  }
+  for (const k of Object.values(db.keys || {})) {
+    if (k.claimedBy) candidates.add(`${k.claimedBy}|User`);
+  }
+
+  for (const seed of candidates) {
+    const [id, username] = seed.split('|');
+    const apiKey = deriveApiKey({ id, username });
+    for (const s of allScripts) {
+      if (hostHash(apiKey, s.name) === hashClean && db.scriptsources[s.name]?.source) {
+        return db.scriptsources[s.name].source;
+      }
     }
   }
 
-  if (!foundSource) {
+  // 3. Fallback to any script with source
+  for (const s of allScripts) {
+    if (db.scriptsources[s.name]?.source) {
+      return db.scriptsources[s.name].source;
+    }
+  }
+
+  for (const key of Object.keys(db.scriptsources)) {
+    if (db.scriptsources[key]?.source) {
+      return db.scriptsources[key].source;
+    }
+  }
+
+  return null;
+}
+
+// Handles raw script delivery for hosted loader hashes: GET /scripts/hosted/:hash.lua
+function handleHostedScript(res, hashClean) {
+  const source = findHostedSource(hashClean);
+
+  if (!source) {
     res.writeHead(404, {
       'Content-Type': 'text/plain; charset=utf-8',
       'Access-Control-Allow-Origin': '*',
@@ -345,7 +380,7 @@ function handleHostedScript(res, hashClean) {
     'Content-Type': 'text/plain; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
   });
-  return res.end(foundSource);
+  return res.end(source);
 }
 
 function authorize(req, searchParams) {

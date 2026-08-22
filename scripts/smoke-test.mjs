@@ -216,6 +216,48 @@ assert.equal(res.status, 200);
 let userBody = await res.json();
 assert.ok(userBody.apiKey.startsWith('VMAX-'));
 assert.ok(Array.isArray(userBody.scripts));
+assert.ok(userBody.scripts.length >= 1);
+assert.equal(userBody.scripts[0].name, 'luasnapper');
+assert.equal(userBody.scripts[0].status, 'online');
+assert.ok(userBody.scripts[0].hostedUrl.includes('/scripts/hosted/'));
+
+// hosted script delivery: GET /scripts/hosted/:hash.lua
+const hostedHash = api.hostHash(userBody.apiKey, 'luasnapper');
+res = await get(`/scripts/hosted/${hostedHash}.lua`);
+assert.equal(res.status, 200);
+assert.equal(res.headers.get('access-control-allow-origin'), '*');
+const hostedContent = await res.text();
+assert.ok(hostedContent.includes('print("hello from protected script")'));
+
+// OPTIONS /token CORS preflight
+res = await fetch(`http://127.0.0.1:${process.env.API_PORT || 3000}/token`, {
+  method: 'OPTIONS',
+});
+assert.equal(res.status, 204);
+assert.equal(res.headers.get('access-control-allow-origin'), '*');
+
+// POST /token CORS proxy for Discord OAuth PKCE
+const tokenOrigFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+  const urlStr = String(input instanceof URL ? input : input?.url || input);
+  if (urlStr.startsWith('https://discord.com/api/oauth2/token')) {
+    return new Response(JSON.stringify({ access_token: 'pkce-token-test', token_type: 'Bearer' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  return tokenOrigFetch(input, init);
+};
+res = await fetch(`http://127.0.0.1:${process.env.API_PORT || 3000}/token`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  body: 'client_id=123&code=abc&grant_type=authorization_code',
+});
+globalThis.fetch = tokenOrigFetch;
+assert.equal(res.status, 200);
+assert.equal(res.headers.get('access-control-allow-origin'), '*');
+let tokenProxyBody = await res.json();
+assert.equal(tokenProxyBody.access_token, 'pkce-token-test');
 
 // healthz endpoint
 res = await get('/healthz');
