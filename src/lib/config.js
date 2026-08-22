@@ -12,6 +12,8 @@ function idList(value) {
     .filter(Boolean);
 }
 
+const publicUrl = (process.env.PUBLIC_URL || '').trim();
+
 export const CONFIG = {
   // Optional pre-claim: users who are treated as the bot owner, comma-separated.
   // Otherwise the first user to run /claimowner becomes the owner.
