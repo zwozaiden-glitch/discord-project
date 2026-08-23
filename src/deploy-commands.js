@@ -1,32 +1,29 @@
+// Manual slash-command deployment. Uses the exact same sync logic as the
+// bot's startup (src/lib/commandSync.js), so it can never register commands
+// in a different scope than the bot itself — which caused every command to
+// show up twice in Discord.
+//
+// Scope (same as startup):
+//   - GUILD_ID set   → registers in that one guild (instant) and clears globals
+//   - GUILD_ID unset → registers globally (up to 1h to appear) and clears guild copies
 import 'dotenv/config';
-import { REST, Routes } from 'discord.js';
-import { readdirSync } from 'node:fs';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { dirname, join } from 'node:path';
+import { Client, GatewayIntentBits } from 'discord.js';
+import { syncSlashCommands } from './lib/commandSync.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-
-const commands = [];
-const commandsPath = join(__dirname, 'commands');
-for (const file of readdirSync(commandsPath).filter((f) => f.endsWith('.js'))) {
-  const command = (await import(pathToFileURL(join(commandsPath, file)))).default;
-  if (command?.data) commands.push(command.data.toJSON());
+const token = (process.env.DISCORD_TOKEN || '').trim();
+if (!token) {
+  console.error('❌ DISCORD_TOKEN is not set. Add it to .env / Railway Variables first.');
+  process.exit(1);
 }
 
-const rest = new REST().setToken(process.env.DISCORD_TOKEN);
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 try {
-  console.log(`Registering ${commands.length} slash command(s)...`);
-
-  // Register to a single guild for instant updates during development.
-  // For global registration (takes up to 1h to propagate), use:
-  //   Routes.applicationCommands(process.env.CLIENT_ID)
-  const route = process.env.GUILD_ID
-    ? Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID)
-    : Routes.applicationCommands(process.env.CLIENT_ID);
-
-  const data = await rest.put(route, { body: commands });
-  console.log(`Successfully registered ${data.length} command(s).`);
+  await client.login(token);
+  await syncSlashCommands(client);
+  await client.destroy();
 } catch (error) {
-  console.error(error);
+  console.error('❌ Failed to deploy commands:', error);
+  process.exitCode = 1;
+  await client.destroy().catch(() => {});
 }
