@@ -1,5 +1,6 @@
 import { Events } from 'discord.js';
 import { handlePanelInteraction } from '../lib/panel.js';
+import { handleTicketInteraction } from '../lib/tickets.js';
 
 export default {
   name: Events.InteractionCreate,
@@ -17,10 +18,21 @@ export default {
       return;
     }
 
-    // Panel buttons + redeem modal
+    // Ticket controls + key-system panel buttons/modals.
     if (interaction.isButton() || interaction.isModalSubmit()) {
-      const handled = await handlePanelInteraction(interaction);
-      if (handled) return;
+      try {
+        if (await handleTicketInteraction(interaction)) return;
+        if (await handlePanelInteraction(interaction)) return;
+      } catch (error) {
+        console.error(`Component interaction failed (${interaction.customId}):`, error);
+        const reply = { content: '❌ That action failed. Please try again or contact an administrator.', ephemeral: true };
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp(reply).catch(() => {});
+        } else {
+          await interaction.reply(reply).catch(() => {});
+        }
+        return;
+      }
     }
 
     if (!interaction.isChatInputCommand()) return;

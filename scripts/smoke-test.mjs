@@ -128,6 +128,52 @@ assert.equal(getBuyerRole('guild-1', 'other script'), 'role-111', 'fallback to g
 clearBuyerRole('guild-1', 'luasnapper');
 assert.equal(getBuyerRole('guild-1', 'luasnapper'), 'role-111', 'cleared per-script');
 
+// --- ticket configuration + persistent open-ticket records ---
+const ticketStore = await import('../src/lib/ticketStore.js');
+let ticketConfig = ticketStore.setTicketConfig('guild-1', {
+  categoryId: 'category-1',
+  supportRoleId: 'support-1',
+  logChannelId: 'ticket-log-1',
+  panelChannelId: 'ticket-panel-1',
+  panelMessageId: 'panel-message-1',
+  title: 'Help Desk',
+  description: 'Open a private support ticket.',
+});
+assert.equal(ticketConfig.supportRoleId, 'support-1');
+assert.equal(ticketStore.getTicketConfig('guild-1').title, 'Help Desk');
+assert.equal(ticketStore.takeNextTicketNumber('guild-1'), 1);
+assert.equal(ticketStore.takeNextTicketNumber('guild-1'), 2);
+
+ticketStore.createTicketRecord({
+  channelId: 'ticket-channel-1',
+  guildId: 'guild-1',
+  userId: 'ticket-user-1',
+  number: 1,
+});
+assert.equal(
+  ticketStore.findOpenTicket('guild-1', 'ticket-user-1').channelId,
+  'ticket-channel-1',
+  'one open ticket can be found by user'
+);
+ticketStore.updateTicket('ticket-channel-1', {
+  claimedBy: 'staff-1',
+  addedUserIds: ['guest-1', 'guest-1'],
+});
+assert.equal(ticketStore.getTicket('ticket-channel-1').claimedBy, 'staff-1');
+assert.deepEqual(ticketStore.getTicket('ticket-channel-1').addedUserIds, ['guest-1']);
+assert.equal(ticketStore.removeTicket('ticket-channel-1'), true);
+assert.equal(ticketStore.findOpenTicket('guild-1', 'ticket-user-1'), null);
+
+// Reconfiguration keeps ticket numbering monotonic.
+ticketConfig = ticketStore.setTicketConfig('guild-1', {
+  categoryId: 'category-2',
+  supportRoleId: 'support-2',
+  logChannelId: 'ticket-log-2',
+  panelChannelId: 'ticket-panel-2',
+  panelMessageId: 'panel-message-2',
+});
+assert.equal(ticketConfig.nextNumber, 3);
+
 // --- script upload + protected delivery ---
 const store = await import('../src/lib/store.js');
 store.db.scriptsources = store.db.scriptsources || {};

@@ -26,8 +26,12 @@ You will only **click buttons and copy-paste**. Total time: ~15 minutes.
    - ✅ `bot`
    - ✅ `applications.commands`
 3. A new box appears below (**Bot Permissions**). Check:
+   - ✅ `View Channels`
    - ✅ `Send Messages`
    - ✅ `Embed Links`
+   - ✅ `Read Message History`
+   - ✅ `Manage Channels` *(required for private support tickets)*
+   - ✅ `Manage Roles` *(required for automatic buyer roles)*
 4. Scroll to the bottom — copy the **Generated URL** and open it in a new browser tab.
 5. Choose **your server** from the list → **Authorize**.
 

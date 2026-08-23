@@ -22,6 +22,10 @@ When deployed to Railway, your project runs **both**:
    - Go to **General Information** → copy the **Application ID**.
 4. **OAuth2 Secret** (for the "Login with Discord" web button):
    - Go to **OAuth2** (left menu) → **Client Secret** → click **Reset Secret** → **Copy**.
+5. **Invite / update the bot permissions**:
+   - Go to **OAuth2 → URL Generator** and select scopes `bot` + `applications.commands`.
+   - Select `View Channels`, `Send Messages`, `Embed Links`, `Read Message History`, `Manage Channels`, and `Manage Roles`.
+   - Open the generated URL and authorize the bot in your server. `Manage Channels` is required by the support-ticket feature.
 
 ---
 
@@ -102,15 +106,16 @@ To ensure your keys, blacklist, and settings persist across rebuilds:
    ```
    ✅ Protect-Vmax Web & API listening on http://0.0.0.0:3000
    ✅ Logged in as YourBot#1234
-   ✅ Registered 16 global slash command(s)
+   ✅ Registered 23 global slash command(s)
    🔑 Validation API token ready
    ```
 3. Open your Railway public domain in your browser (`https://your-domain.up.railway.app`):
    - You will see the **Protect-Vmax Web Landing Page** with live bot status, loader code generator, and features.
 4. In your Discord server:
    - Run `/claimowner` to become the master owner.
-   - Run `/setlog channel: #audit-logs` to configure logging.
-   - Run `/setup script: luasnapper` to deploy your whitelist panel!
+   - Run `/setlog channel: #audit-logs` to configure key-system logging.
+   - Run `/setup script: luasnapper` to deploy your whitelist panel.
+   - Optional: run `/ticketsetup` and select a ticket category, support role, log channel, and panel channel to deploy private support tickets.
 
 ---
 
