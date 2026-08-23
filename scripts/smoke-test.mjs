@@ -15,6 +15,18 @@ const keys = await import('../src/lib/keys.js');
 
 const { ensureScript, makeKey, generateKeys, claimKey, getUserWhitelist, isWhitelisted, validateKey, blacklistUser, isBlacklisted, resetHwidForUser, getCooldownRemaining, purgeExpired, deleteUserKey } = keySystem;
 
+// --- slash command loading/schema validation ---
+const { Collection } = await import('discord.js');
+const { loadCommandModules } = await import('../src/lib/commandSync.js');
+const commandCollection = new Collection();
+const commandModules = await loadCommandModules(commandCollection);
+for (const command of commandModules) command.data.toJSON();
+assert.equal(commandModules.length, 25, 'all slash commands load');
+assert.ok(commandCollection.has('rolesetup'));
+assert.ok(commandCollection.has('clear'));
+assert.ok(commandCollection.has('ticketsetup'));
+assert.ok(commandCollection.has('ticket'));
+
 // --- scripts ---
 await ensureScript('luasnapper');
 await ensureScript('other script');
@@ -99,7 +111,18 @@ assert.equal(isWhitelisted('luasnapper', 'user-4'), false, 'expired entry purged
 assert.equal(validateKey({ inputKey: rawExp, hwid: 'X', script: 'luasnapper' }).code, 'voided');
 
 // --- settings: owner claim + log channel + api token + buyer role ---
-const { claimOwner, isBotOwner, setLogChannel, getLogChannelId, ensureApiToken, setBuyerRole, clearBuyerRole, getBuyerRole } = await import('../src/lib/settings.js');
+const {
+  claimOwner,
+  isBotOwner,
+  setLogChannel,
+  getLogChannelId,
+  ensureApiToken,
+  setBuyerRole,
+  clearBuyerRole,
+  getBuyerRole,
+  setServerRoles,
+  getServerRoles,
+} = await import('../src/lib/settings.js');
 
 assert.equal(isBotOwner('user-1'), false, 'nobody is owner yet');
 let claim = claimOwner('user-1');
@@ -127,6 +150,22 @@ assert.equal(getBuyerRole('guild-1', 'luasnapper'), 'role-222', 'per-script over
 assert.equal(getBuyerRole('guild-1', 'other script'), 'role-111', 'fallback to global');
 clearBuyerRole('guild-1', 'luasnapper');
 assert.equal(getBuyerRole('guild-1', 'luasnapper'), 'role-111', 'cleared per-script');
+
+// --- server role preset IDs ---
+setServerRoles('guild-1', {
+  Admin: 'role-admin',
+  Support: 'role-support',
+  Buyer: 'role-buyer',
+  Empty: null,
+});
+assert.deepEqual(getServerRoles('guild-1'), {
+  Admin: 'role-admin',
+  Support: 'role-support',
+  Buyer: 'role-buyer',
+});
+const roleSnapshot = getServerRoles('guild-1');
+roleSnapshot.Admin = 'changed-only-in-copy';
+assert.equal(getServerRoles('guild-1').Admin, 'role-admin', 'role settings return a safe copy');
 
 // --- ticket configuration + persistent open-ticket records ---
 const ticketStore = await import('../src/lib/ticketStore.js');

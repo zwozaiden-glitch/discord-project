@@ -12,6 +12,8 @@ A Discord bot built with [discord.js](https://discord.js.org/) v14, with a compl
 - 📦 **Script protection** — `/apply` uploads your `.lua`; the bot wraps it with a runtime whitelist check and users get a Protect-Vmax loader from **Get Script** / `/getscript`
 - 🎫 **Interactive key panels** — users click **Redeem Key / Get Script / My Key / Reset HWID** buttons (no commands needed)
 - 📨 **Private support tickets** — `/ticketsetup` creates an Open Ticket panel with one-ticket-per-user protection, staff claim/unclaim/close buttons, member add/remove commands, and a dedicated audit log
+- 🏷️ **One-command role setup** — `/rolesetup` creates Admin, Moderator, Support, Developer, Buyer, Member, and Muted roles and connects Buyer to the key system
+- 🧹 **Message cleanup** — `/clear amount:` lets members with Manage Messages remove up to 100 recent messages
 - 🏷️ **Auto buyer roles** — `/setbuyerrole` assigns a role automatically when users redeem; whitelist whole roles with `/whitelist role:`
 - 📊 **Analytics** — `/analytics` shows runs per day, top keys, HWID/status activity (keys & HWIDs masked)
 - 🔑 **HWID locking** — first run binds the key to the user's device; sharing = `HWID mismatch`
@@ -61,7 +63,7 @@ public/                   # Web landing page assets
    - **Bot** → Reset Token → copy it; turn ON **Message Content Intent**
    - **General Information** → copy the **Application ID**
 
-2. **Invite the bot**: OAuth2 → URL Generator → scopes `bot` + `applications.commands` → permissions `View Channels`, `Send Messages`, `Embed Links`, `Read Message History`, `Manage Channels`, and `Manage Roles` → open the URL → invite
+2. **Invite the bot**: OAuth2 → URL Generator → scopes `bot` + `applications.commands` → permissions `View Channels`, `Send Messages`, `Embed Links`, `Read Message History`, `Manage Messages`, `Manage Channels`, and `Manage Roles` → open the URL → invite
 
 3. **Configure**:
    ```bash
@@ -82,6 +84,8 @@ public/                   # Web landing page assets
 
 ```bash
 /claimowner                                    # you become the bot owner
+/rolesetup                                     # create the server role preset
+/clear amount: 25                              # delete recent messages
 /setlog channel: #logs                         # audit log channel
 /setbuyerrole role: @Buyers                    # auto role on redeem
 /setup script: luasnapper channel: #whitelist  # post the panel
