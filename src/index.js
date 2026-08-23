@@ -3,8 +3,17 @@ import { Client, Collection, GatewayIntentBits } from 'discord.js';
 import { readdirSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
+import { loadCommandModules } from './lib/commandSync.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Keep the bot alive: log async errors instead of letting them crash the process.
+process.on('unhandledRejection', (err) => {
+  console.error('💥 Unhandled promise rejection (bot stays online):', err);
+});
+process.on('uncaughtException', (err) => {
+  console.error('💥 Uncaught exception (bot stays online):', err);
+});
 
 const client = new Client({
   intents: [
@@ -16,15 +25,7 @@ const client = new Client({
 
 // ---- Load commands ----
 client.commands = new Collection();
-const commandsPath = join(__dirname, 'commands');
-for (const file of readdirSync(commandsPath).filter((f) => f.endsWith('.js'))) {
-  const command = (await import(pathToFileURL(join(commandsPath, file)))).default;
-  if (command?.data && command?.execute) {
-    client.commands.set(command.data.name, command);
-  } else {
-    console.warn(`[WARN] Command ${file} is missing "data" or "execute".`);
-  }
-}
+await loadCommandModules(client.commands);
 
 // ---- Load events ----
 const eventsPath = join(__dirname, 'events');
