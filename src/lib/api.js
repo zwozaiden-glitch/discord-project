@@ -3,16 +3,19 @@
 //   GET /                                -> Web landing page (index.html)
 //   GET /dashboard.html                  -> Dashboard page
 //   GET /styles.css, /auth.js, etc.      -> Static website assets
-//   POST /token                          -> CORS token proxy for Discord OAuth PKCE
+//   GET /auth/discord                    -> Starts Discord OAuth2 login
+//   GET /callback                        -> Discord OAuth2 callback, then dashboard redirect
+//   GET /api/auth/session                -> Current signed-in website user
+//   POST /auth/logout                    -> Clears the website login session
 //   GET /api/user/:discordId             -> Dashboard user data (apiKey, scripts, stats)
 //   GET /scripts/hosted/:hash.lua        -> Raw protected Lua script for loaders
 //   GET /health, /healthz                -> Health check
-//   GET /callback                        -> Server Discord OAuth2 login
 //   GET /api/v1/validate?key=..&hwid=..  -> JSON verdict (public, rate-limited)
 //   GET /api/v1/load?script=..&key=..    -> protected Lua source (public, rate-limited)
 //   GET /api/v1/status?user_id=..        -> whitelist status (token required)
 //   GET /api/v1/key?key=..               -> key record        (token required)
 import { createServer } from 'node:http';
+import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { URL, fileURLToPath } from 'node:url';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, normalize, extname } from 'node:path';
@@ -27,6 +30,94 @@ import { db } from './store.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', '..', 'public');
 const DISCORD_API = 'https://discord.com/api';
+const OAUTH_STATE_COOKIE = 'pv_oauth_state';
+const SESSION_COOKIE = 'pv_session';
+const SESSION_MAX_AGE = 7 * 24 * 60 * 60;
+
+function parseCookies(req) {
+  const cookies = {};
+  for (const part of String(req.headers.cookie || '').split(';')) {
+    const separator = part.indexOf('=');
+    if (separator < 0) continue;
+    const name = part.slice(0, separator).trim();
+    const value = part.slice(separator + 1).trim();
+    if (name) cookies[name] = value;
+  }
+  return cookies;
+}
+
+function cookie(name, value, { maxAge = SESSION_MAX_AGE, httpOnly = true } = {}) {
+  const parts = [
+    `${name}=${value}`,
+    'Path=/',
+    `Max-Age=${Math.max(0, Math.floor(maxAge))}`,
+    'SameSite=Lax',
+  ];
+  if (httpOnly) parts.push('HttpOnly');
+  if (String(CONFIG.publicUrl || '').startsWith('https://')) parts.push('Secure');
+  return parts.join('; ');
+}
+
+function sessionSecret() {
+  // OAuth cannot be enabled without the Discord client secret, so it is also
+  // a stable signing key for the short, HttpOnly website session cookie.
+  return CONFIG.discordClientSecret;
+}
+
+function sign(value) {
+  return createHmac('sha256', sessionSecret()).update(value).digest('base64url');
+}
+
+function createSessionCookie(user, expiresIn) {
+  const safeUser = {
+    id: user.id,
+    username: user.username,
+    global_name: user.global_name || null,
+    discriminator: user.discriminator || '0',
+    avatar: user.avatar || null,
+    email: user.email || null,
+  };
+  const maxAge = Math.min(Math.max(Number(expiresIn) || SESSION_MAX_AGE, 60), SESSION_MAX_AGE);
+  const payload = Buffer.from(
+    JSON.stringify({ user: safeUser, exp: Math.floor(Date.now() / 1000) + maxAge })
+  ).toString('base64url');
+  return { value: `${payload}.${sign(payload)}`, maxAge };
+}
+
+function readSession(req) {
+  const raw = parseCookies(req)[SESSION_COOKIE] || '';
+  const separator = raw.lastIndexOf('.');
+  if (separator < 1 || !sessionSecret()) return null;
+
+  const payload = raw.slice(0, separator);
+  const suppliedSignature = raw.slice(separator + 1);
+  const expectedSignature = sign(payload);
+  const supplied = Buffer.from(suppliedSignature);
+  const expected = Buffer.from(expectedSignature);
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) return null;
+
+  try {
+    const session = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (!session?.user?.id || !session.exp || session.exp <= Math.floor(Date.now() / 1000)) return null;
+    return session;
+  } catch {
+    return null;
+  }
+}
+
+function sameValue(left, right) {
+  const a = Buffer.from(String(left || ''));
+  const b = Buffer.from(String(right || ''));
+  return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
+}
+
+function dashboardUrl() {
+  try {
+    return new URL('/dashboard.html', CONFIG.publicUrl).toString();
+  } catch {
+    return '/dashboard.html';
+  }
+}
 
 /* ---------------------- deterministic hashing (mirrors dashboard.js) ---- */
 function strHash(str) {
@@ -104,11 +195,11 @@ function escapeHtml(str) {
 }
 
 // Minimal browser-facing page (used by OAuth callback errors/info).
-function htmlPage(res, status, title, bodyHtml) {
+function htmlPage(res, status, title, bodyHtml, headers = {}) {
   res.writeHead(status, {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'no-store',
-    'Access-Control-Allow-Origin': '*',
+    ...headers,
   });
   res.end(`<!doctype html>
 <html lang="en">
@@ -176,44 +267,79 @@ function serveStaticFile(res, reqPath) {
   }
 }
 
-// Handles the Discord OAuth2 redirect: exchanges ?code for an access token,
-// then shows who logged in. Public + rate-limited — no API token involved.
-async function handleOAuthCallback(req, res, url) {
-  const params = url.searchParams;
-
-  // Discord sends ?error=access_denied when the user cancels the login prompt.
-  if (params.get('error')) {
-    return htmlPage(res, 403, 'Login cancelled', `
-      <p class="err">Discord login was cancelled (<code>${escapeHtml(params.get('error'))}</code>).</p>
-      <p>Close this tab and use the Login button on the site again if you want to retry.</p>`);
-  }
-
-  // Opened directly (no code) — show a friendly page instead of an error.
-  const code = params.get('code') || '';
-  if (!code) {
-    const loginUrl = CONFIG.discordClientId && CONFIG.oauthRedirectUri
-      ? `https://discord.com/oauth2/authorize?client_id=${encodeURIComponent(CONFIG.discordClientId)}` +
-        `&response_type=code&redirect_uri=${encodeURIComponent(CONFIG.oauthRedirectUri)}&scope=identify%20guilds`
-      : null;
-    return htmlPage(res, 400, 'Nothing to do', `
-      <p>This is the Protect-Vmax Discord login callback. It only does something when Discord
-      redirects here after you press <strong>Login with Discord</strong> on the site.</p>
-      ${loginUrl ? `<a class="btn" href="${loginUrl}" rel="noopener">Login with Discord</a>` : ''}`);
-  }
-
+function oauthMissingConfig() {
   const missing = [];
   if (!CONFIG.discordClientId) missing.push('DISCORD_CLIENT_ID (or CLIENT_ID)');
   if (!CONFIG.discordClientSecret) missing.push('DISCORD_CLIENT_SECRET');
   if (!CONFIG.oauthRedirectUri) missing.push('PUBLIC_URL (or DISCORD_OAUTH_REDIRECT_URI)');
+  return missing;
+}
+
+// Starts the one canonical website login flow. Keeping this on the backend
+// means the client secret and Discord access token never enter browser JS.
+function handleOAuthStart(res) {
+  const missing = oauthMissingConfig();
   if (missing.length) {
     return htmlPage(res, 500, 'Login not configured', `
       <p class="err">Discord login is not configured on the server. Add these variables
       (Railway → your service → Variables):</p>
-      <ul>${missing.map((m) => `<li><code>${escapeHtml(m)}</code></li>`).join('')}</ul>
+      <ul>${missing.map((item) => `<li><code>${escapeHtml(item)}</code></li>`).join('')}</ul>
       <p class="muted">DISCORD_CLIENT_SECRET comes from the Developer Portal → OAuth2 → Client Secret.</p>`);
   }
 
-  // Exchange the one-time code for an access token.
+  const state = randomBytes(24).toString('base64url');
+  const authorizeUrl = new URL('https://discord.com/oauth2/authorize');
+  authorizeUrl.search = new URLSearchParams({
+    client_id: CONFIG.discordClientId,
+    response_type: 'code',
+    redirect_uri: CONFIG.oauthRedirectUri,
+    scope: 'identify email',
+    state,
+  }).toString();
+
+  res.writeHead(302, {
+    Location: authorizeUrl.toString(),
+    'Cache-Control': 'no-store',
+    'Set-Cookie': cookie(OAUTH_STATE_COOKIE, state, { maxAge: 10 * 60 }),
+  });
+  return res.end();
+}
+
+// Handles Discord's redirect, creates an HttpOnly signed session, and sends
+// the user to the dashboard. Public + rate-limited; no API token is involved.
+async function handleOAuthCallback(req, res, url) {
+  const params = url.searchParams;
+
+  if (params.get('error')) {
+    return htmlPage(res, 403, 'Login cancelled', `
+      <p class="err">Discord login was cancelled (<code>${escapeHtml(params.get('error'))}</code>).</p>
+      <a class="btn" href="/auth/discord">Try again</a>`);
+  }
+
+  const code = params.get('code') || '';
+  if (!code) {
+    return htmlPage(res, 400, 'OAuth callback', `
+      <p>This URL is only the Discord OAuth return endpoint, not the website homepage.</p>
+      <p>Open <code>${escapeHtml(CONFIG.publicUrl)}/</code> to view the site, or start a login below.</p>
+      <a class="btn" href="/auth/discord">Login with Discord</a>`);
+  }
+
+  const missing = oauthMissingConfig();
+  if (missing.length) {
+    return htmlPage(res, 500, 'Login not configured', `
+      <p class="err">Discord login is missing:</p>
+      <ul>${missing.map((item) => `<li><code>${escapeHtml(item)}</code></li>`).join('')}</ul>`);
+  }
+
+  const savedState = parseCookies(req)[OAUTH_STATE_COOKIE];
+  const returnedState = params.get('state');
+  if (!sameValue(savedState, returnedState)) {
+    return htmlPage(res, 400, 'Login expired', `
+      <p class="err">The login state is missing, expired, or invalid.</p>
+      <p>Start again from the website; do not open the callback URL directly.</p>
+      <a class="btn" href="/auth/discord">Try again</a>`);
+  }
+
   let tokenRes;
   let tokenData = {};
   try {
@@ -237,16 +363,16 @@ async function handleOAuthCallback(req, res, url) {
   if (!tokenRes.ok) {
     const err = tokenData.error || `HTTP ${tokenRes.status}`;
     const hint = err === 'invalid_client'
-      ? 'Check <code>DISCORD_CLIENT_ID</code> / <code>DISCORD_CLIENT_SECRET</code> — they must match the Application ID and OAuth2 Client Secret from the Developer Portal.'
+      ? 'Check <code>DISCORD_CLIENT_ID</code> / <code>DISCORD_CLIENT_SECRET</code> — they must belong to the same Discord application.'
       : err === 'invalid_grant'
-        ? 'The code was already used or expired — retry the login. If it keeps happening, the redirect URI registered in the Developer Portal (OAuth2 → Redirects) does not exactly match the one the server sends.'
-        : 'Discord rejected the login code. Retry the login from the site.';
+        ? 'The code expired, was already used, or the Developer Portal redirect does not exactly match the deploy-log callback URL.'
+        : 'Discord rejected the login code. Retry from the website.';
     return htmlPage(res, 502, 'Login failed', `
       <p class="err">Discord rejected the token exchange: <code>${escapeHtml(err)}</code></p>
-      <p>${hint}</p>`);
+      <p>${hint}</p>
+      <a class="btn" href="/auth/discord">Try again</a>`);
   }
 
-  // Who just logged in? (needs the "identify" scope)
   let user = null;
   try {
     const meRes = await fetch('https://discord.com/api/users/@me', {
@@ -254,41 +380,52 @@ async function handleOAuthCallback(req, res, url) {
     });
     if (meRes.ok) user = await meRes.json();
   } catch {
-    // Non-fatal — the login itself already succeeded.
+    // The error page below handles an unavailable identity.
   }
 
-  console.log(`🔑 OAuth login: ${user ? `${user.username} (${user.id})` : 'token exchange ok (identity unavailable)'}`);
+  if (!user?.id) {
+    return htmlPage(res, 502, 'Login failed', `
+      <p class="err">Discord authorized the login but did not return your account.</p>
+      <a class="btn" href="/auth/discord">Try again</a>`);
+  }
 
-  const name = user ? (user.global_name || user.username) : 'Discord user';
-  const avatar = user?.avatar
-    ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png?size=128`
-    : null;
-
-  return htmlPage(res, 200, 'Logged in', `
-    ${avatar ? `<img class="avatar" src="${escapeHtml(avatar)}" alt="" width="80" height="80">` : ''}
-    <h2>Logged in as ${escapeHtml(name)}</h2>
-    ${user ? `<p class="muted">Discord ID: <code>${escapeHtml(user.id)}</code></p>` : ''}
-    <p>Discord login is working. You can close this tab and return to the site.</p>
-    ${CONFIG.websiteUrl ? `<a class="btn" href="${escapeHtml(CONFIG.websiteUrl)}" rel="noopener">Back to the site</a>` : ''}`);
+  console.log(`🔑 OAuth login: ${user.username} (${user.id})`);
+  const session = createSessionCookie(user, tokenData.expires_in);
+  res.writeHead(302, {
+    Location: dashboardUrl(),
+    'Cache-Control': 'no-store',
+    'Set-Cookie': [
+      cookie(SESSION_COOKIE, session.value, { maxAge: session.maxAge }),
+      cookie(OAUTH_STATE_COOKIE, '', { maxAge: 0 }),
+    ],
+  });
+  return res.end();
 }
 
 // Handles user profile and script list for the dashboard: GET /api/user/:discordId
 async function handleUserDashboard(req, res, discordId) {
-  const auth = req.headers['authorization'] || '';
-  const m = auth.match(/^Bearer\s+(.+)$/i);
-  let user = { id: discordId, username: 'User' };
+  let user = readSession(req)?.user || null;
 
-  if (m) {
-    try {
-      const r = await fetch(DISCORD_API + '/users/@me', {
-        headers: { Authorization: 'Bearer ' + m[1] },
-      });
-      if (r.ok) {
-        user = await r.json();
+  // Backward-compatible support for a browser that still has a token from the
+  // old client-side OAuth flow. New logins use the signed HttpOnly cookie.
+  if (!user) {
+    const auth = req.headers.authorization || '';
+    const match = auth.match(/^Bearer\s+(.+)$/i);
+    if (match) {
+      try {
+        const response = await fetch(DISCORD_API + '/users/@me', {
+          headers: { Authorization: `Bearer ${match[1]}` },
+        });
+        if (response.ok) user = await response.json();
+      } catch {
+        // The unauthorized response below handles Discord being unavailable.
       }
-    } catch {
-      // Non-fatal fallback
     }
+  }
+
+  if (!user?.id) return unauthorized(res);
+  if (String(user.id) !== String(discordId)) {
+    return json(res, 403, { status: 'error', code: 'forbidden', message: 'That is not your dashboard.' });
   }
 
   const apiKey = deriveApiKey(user);
@@ -409,7 +546,16 @@ function rateLimited(ip) {
   return false;
 }
 
-const PUBLIC_API_PATHS = new Set(['/health', '/healthz', '/api/v1/info', '/callback', '/api/v1/validate', '/api/v1/load']);
+const PUBLIC_API_PATHS = new Set([
+  '/health',
+  '/healthz',
+  '/api/v1/info',
+  '/auth/discord',
+  '/callback',
+  '/api/auth/session',
+  '/api/v1/validate',
+  '/api/v1/load',
+]);
 
 export function startApiServer(client) {
   const server = createServer(async (req, res) => {
@@ -427,25 +573,12 @@ export function startApiServer(client) {
       return res.end();
     }
 
-    // ---- Token Proxy for Discord OAuth PKCE (bypasses browser CORS) ----
-    if (req.method === 'POST' && path === '/token') {
-      let body = '';
-      for await (const chunk of req) body += chunk;
-      try {
-        const upstream = await fetch('https://discord.com/api/oauth2/token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body,
-        });
-        const text = await upstream.text();
-        res.writeHead(upstream.status, {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        });
-        return res.end(text);
-      } catch (err) {
-        return json(res, 502, { error: 'proxy_failed', detail: String(err) });
-      }
+    if (req.method === 'POST' && path === '/auth/logout') {
+      res.writeHead(204, {
+        'Cache-Control': 'no-store',
+        'Set-Cookie': cookie(SESSION_COOKIE, '', { maxAge: 0 }),
+      });
+      return res.end();
     }
 
     if (req.method !== 'GET') return json(res, 405, { status: 'error', message: 'Method not allowed.' });
@@ -477,6 +610,16 @@ export function startApiServer(client) {
         discord_client_id: CONFIG.discordClientId || null,
         commands_count: client?.commands?.size || 16,
       });
+    }
+
+    // ---- Website Discord OAuth and session ----
+    if (path === '/auth/discord') return handleOAuthStart(res);
+    if (path === '/callback') return handleOAuthCallback(req, res, url);
+    if (path === '/api/auth/session') {
+      const session = readSession(req);
+      return json(res, 200, session
+        ? { authenticated: true, user: session.user, expires_at: session.exp * 1000 }
+        : { authenticated: false, user: null });
     }
 
     // ---- Dashboard User Endpoint: GET /api/user/:discordId ----
@@ -529,9 +672,6 @@ export function startApiServer(client) {
       });
       return res.end(protectedSrc);
     }
-
-    // ---- Discord OAuth2 login callback (public, browser-facing) ----
-    if (path === '/callback') return handleOAuthCallback(req, res, url);
 
     // ---- Admin endpoints (require API token) ----
     if (path.startsWith('/api/')) {
@@ -587,10 +727,11 @@ export function startApiServer(client) {
 
   server.listen(CONFIG.apiPort, '0.0.0.0', () => {
     console.log(`✅ Protect-Vmax Web & API listening on http://0.0.0.0:${CONFIG.apiPort}`);
+    console.log(`🌐 Website home: ${CONFIG.publicUrl}/`);
     if (!CONFIG.discordClientSecret) {
-      console.log('ℹ️ DISCORD_CLIENT_SECRET not set — the website "Login with Discord" (/callback) will not work. Add it in Railway → Variables (Developer Portal → OAuth2 → Client Secret).');
+      console.log('ℹ️ DISCORD_CLIENT_SECRET not set — the website "Login with Discord" will not work. Add it in Railway → Variables (Developer Portal → OAuth2 → Client Secret).');
     } else {
-      console.log(`🔐 Discord OAuth login ready (redirect URI: ${CONFIG.oauthRedirectUri || 'NOT SET — set PUBLIC_URL or DISCORD_OAUTH_REDIRECT_URI'})`);
+      console.log(`🔐 Discord OAuth callback (not the homepage): ${CONFIG.oauthRedirectUri || 'NOT SET — set PUBLIC_URL or DISCORD_OAUTH_REDIRECT_URI'}`);
     }
   });
 

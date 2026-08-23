@@ -81,8 +81,10 @@ To enable the web landing page's **"Login with Discord"** button:
    ```
    https://your-domain.up.railway.app/callback
    ```
-   *(Replace with your actual Railway domain generated in Step 3)*.
+   *(Replace with your actual Railway domain generated in Step 3.)* It must exactly match the **Discord OAuth callback** line in the deploy log.
 4. Click **Save Changes**.
+
+> `/callback` is an OAuth return endpoint, not a normal web page. Open `https://your-domain.up.railway.app/` to see the website, then use **Login with Discord**. Opening `/callback` directly has no Discord authorization code to process.
 
 ---
 

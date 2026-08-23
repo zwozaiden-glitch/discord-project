@@ -303,8 +303,23 @@ assert.equal(res.status, 200);
 res = await get('/favicon.svg');
 assert.equal(res.status, 200);
 
-// dashboard user API endpoint
+// Dashboard data is private. A valid Discord bearer from the previous browser
+// flow remains supported during migration to the signed HttpOnly session.
 res = await get('/api/user/12345');
+assert.equal(res.status, 401, 'dashboard API rejects anonymous requests');
+const dashboardRealFetch = globalThis.fetch;
+globalThis.fetch = async (input, init) => {
+  const urlStr = String(input instanceof URL ? input : input?.url || input);
+  if (urlStr === 'https://discord.com/api/users/@me') {
+    return new Response(JSON.stringify({ id: '12345', username: 'tester', global_name: 'Tester' }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  return dashboardRealFetch(input, init);
+};
+res = await get('/api/user/12345', { Authorization: 'Bearer legacy-browser-token' });
+globalThis.fetch = dashboardRealFetch;
 assert.equal(res.status, 200);
 let userBody = await res.json();
 assert.ok(userBody.apiKey.startsWith('VMAX-'));
@@ -322,35 +337,12 @@ assert.equal(res.headers.get('access-control-allow-origin'), '*');
 const hostedContent = await res.text();
 assert.ok(hostedContent.includes('print("hello from protected script")'));
 
-// OPTIONS /token CORS preflight
-res = await fetch(`http://127.0.0.1:${process.env.API_PORT || 3000}/token`, {
-  method: 'OPTIONS',
-});
-assert.equal(res.status, 204);
-assert.equal(res.headers.get('access-control-allow-origin'), '*');
-
-// POST /token CORS proxy for Discord OAuth PKCE
-const tokenOrigFetch = globalThis.fetch;
-globalThis.fetch = async (input, init) => {
-  const urlStr = String(input instanceof URL ? input : input?.url || input);
-  if (urlStr.startsWith('https://discord.com/api/oauth2/token')) {
-    return new Response(JSON.stringify({ access_token: 'pkce-token-test', token_type: 'Bearer' }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-  return tokenOrigFetch(input, init);
-};
+// The old open OAuth token proxy is gone; the backend now performs the
+// exchange itself so Discord access tokens never enter browser JavaScript.
 res = await fetch(`http://127.0.0.1:${process.env.API_PORT || 3000}/token`, {
   method: 'POST',
-  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-  body: 'client_id=123&code=abc&grant_type=authorization_code',
 });
-globalThis.fetch = tokenOrigFetch;
-assert.equal(res.status, 200);
-assert.equal(res.headers.get('access-control-allow-origin'), '*');
-let tokenProxyBody = await res.json();
-assert.equal(tokenProxyBody.access_token, 'pkce-token-test');
+assert.equal(res.status, 405);
 
 // healthz endpoint
 res = await get('/healthz');
@@ -411,60 +403,109 @@ assert.ok(stats.byDay.length === 7, '7-day buckets');
 assert.ok(stats.topKeys.length >= 1, 'top keys computed');
 assert.ok(stats.recent[0].hwid.includes('…') || stats.recent[0].hwid.length <= 8, 'hwid masked');
 
-// --- Discord OAuth2 /callback (public — must never hit the API token gate) ---
+// --- Discord OAuth2 flow (public — must never hit the API token gate) ---
 const { CONFIG } = await import('../src/lib/config.js');
 const realFetch = globalThis.fetch;
+const localBase = `http://127.0.0.1:${process.env.API_PORT || 3000}`;
 
-// 1) Opened directly (no code) -> friendly 400 page, NOT the 401 token error.
+// 1) /callback is not a website page. Direct visits explain that clearly.
 res = await get('/callback');
 assert.equal(res.status, 400, 'direct /callback visit -> 400 info page');
 let page = await res.text();
-assert.match(page, /discord login callback/i);
+assert.match(page, /OAuth return endpoint/i);
+assert.match(page, /not the website homepage/i);
 assert.ok(!page.includes('Missing or invalid API token'), 'no token error on /callback');
 
-// 2) Code present but OAuth not configured -> actionable 500 page.
+// 2) Missing OAuth variables produce an actionable page.
 CONFIG.discordClientId = '';
 CONFIG.discordClientSecret = '';
 CONFIG.oauthRedirectUri = '';
-res = await get('/callback?code=abc');
+res = await get('/auth/discord');
 assert.equal(res.status, 500, 'missing config reported');
 page = await res.text();
 assert.ok(page.includes('DISCORD_CLIENT_SECRET'), 'names the missing env var');
-assert.ok(!page.includes('Missing or invalid API token'), 'no token error');
 
-// 3) Configured -> token exchange + identity -> success page.
+// 3) Configured login starts at /auth/discord with a state cookie and the exact
+// callback URI shown in deploy logs.
 CONFIG.discordClientId = 'client-123';
 CONFIG.discordClientSecret = 'secret-456';
 CONFIG.oauthRedirectUri = 'https://bot.example/callback';
+res = await fetch(`${localBase}/auth/discord`, { redirect: 'manual' });
+assert.equal(res.status, 302);
+const authorizeLocation = new URL(res.headers.get('location'));
+assert.equal(authorizeLocation.origin, 'https://discord.com');
+assert.equal(authorizeLocation.searchParams.get('client_id'), 'client-123');
+assert.equal(authorizeLocation.searchParams.get('redirect_uri'), 'https://bot.example/callback');
+const oauthState = authorizeLocation.searchParams.get('state');
+const stateCookie = (res.headers.get('set-cookie') || '').split(';')[0];
+assert.ok(oauthState && stateCookie.startsWith('pv_oauth_state='));
+
+// A callback without the matching browser state is rejected before exchange.
+res = await get('/callback?code=abc&state=wrong');
+assert.equal(res.status, 400, 'invalid OAuth state rejected');
+
 let exchanged = null;
 globalThis.fetch = async (input, init) => {
   const urlStr = String(input instanceof URL ? input : input?.url || input);
   if (urlStr.startsWith('https://discord.com/api/oauth2/token')) {
     exchanged = Object.fromEntries(new URLSearchParams(init.body));
-    return new Response(JSON.stringify({ access_token: 'at-1', token_type: 'Bearer' }), {
+    return new Response(JSON.stringify({
+      access_token: 'at-1', token_type: 'Bearer', expires_in: 3600,
+    }), {
       status: 200, headers: { 'Content-Type': 'application/json' },
     });
   }
   if (urlStr === 'https://discord.com/api/users/@me') {
-    return new Response(JSON.stringify({ id: '42', username: 'zwoz', global_name: 'Zwoz', avatar: null }), {
+    return new Response(JSON.stringify({
+      id: '42', username: 'zwoz', global_name: 'Zwoz', avatar: null,
+    }), {
       status: 200, headers: { 'Content-Type': 'application/json' },
     });
   }
   return realFetch(input, init);
 };
-res = await get('/callback?code=abc');
+res = await realFetch(`${localBase}/callback?code=abc&state=${encodeURIComponent(oauthState)}`, {
+  headers: { Cookie: stateCookie },
+  redirect: 'manual',
+});
 globalThis.fetch = realFetch;
-assert.equal(res.status, 200, 'successful login page');
-page = await res.text();
-assert.match(page, /Logged in as Zwoz/);
-assert.ok(page.includes('42'), 'shows the Discord ID');
-assert.ok(!page.includes('secret-456'), 'never leaks the client secret');
+assert.equal(res.status, 302, 'successful login redirects to dashboard');
+assert.match(res.headers.get('location'), /dashboard\.html$/);
+const callbackCookies = res.headers.get('set-cookie') || '';
+const sessionMatch = callbackCookies.match(/pv_session=([^;,]+)/);
+assert.ok(sessionMatch, 'callback sets signed HttpOnly session');
+assert.ok(/HttpOnly/i.test(callbackCookies));
 assert.equal(exchanged.client_id, 'client-123');
 assert.equal(exchanged.client_secret, 'secret-456');
 assert.equal(exchanged.grant_type, 'authorization_code');
 assert.equal(exchanged.redirect_uri, 'https://bot.example/callback');
 
-// 4) Discord rejects the code -> 502 with the Discord error, still not the 401.
+const sessionCookie = `pv_session=${sessionMatch[1]}`;
+res = await get('/api/auth/session', { Cookie: sessionCookie });
+assert.equal(res.status, 200);
+let webSession = await res.json();
+assert.equal(webSession.authenticated, true);
+assert.equal(webSession.user.id, '42');
+assert.equal(webSession.user.global_name, 'Zwoz');
+
+res = await get('/api/user/42', { Cookie: sessionCookie });
+assert.equal(res.status, 200, 'signed website session opens its dashboard');
+res = await get('/api/user/999', { Cookie: sessionCookie });
+assert.equal(res.status, 403, 'signed website session cannot open another dashboard');
+
+// Logout invalidates the browser cookie.
+res = await fetch(`${localBase}/auth/logout`, {
+  method: 'POST',
+  headers: { Cookie: sessionCookie },
+});
+assert.equal(res.status, 204);
+assert.match(res.headers.get('set-cookie') || '', /Max-Age=0/);
+
+// 4) Discord token failures still produce a useful callback error.
+res = await fetch(`${localBase}/auth/discord`, { redirect: 'manual' });
+const retryLocation = new URL(res.headers.get('location'));
+const retryState = retryLocation.searchParams.get('state');
+const retryCookie = (res.headers.get('set-cookie') || '').split(';')[0];
 globalThis.fetch = async (input) => {
   const urlStr = String(input instanceof URL ? input : input?.url || input);
   if (urlStr.startsWith('https://discord.com/')) {
@@ -474,7 +515,9 @@ globalThis.fetch = async (input) => {
   }
   return realFetch(input);
 };
-res = await get('/callback?code=abc');
+res = await realFetch(`${localBase}/callback?code=bad&state=${encodeURIComponent(retryState)}`, {
+  headers: { Cookie: retryCookie },
+});
 globalThis.fetch = realFetch;
 assert.equal(res.status, 502, 'rejected exchange -> 502');
 page = await res.text();
