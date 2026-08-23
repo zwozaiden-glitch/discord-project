@@ -2,7 +2,7 @@ import { ChannelType, PermissionFlagsBits, SlashCommandBuilder } from 'discord.j
 import { ensureAdmin } from '../lib/permissions.js';
 import { getServerRoles, setBuyerRole, setServerRoles } from '../lib/settings.js';
 
-const ROLE_PRESET = [
+export const ROLE_PRESET = [
   {
     name: 'Admin',
     color: 0xed4245,
@@ -22,6 +22,12 @@ const ROLE_PRESET = [
     ],
   },
   {
+    name: 'Staff',
+    color: 0x3498db,
+    hoist: true,
+    permissions: [PermissionFlagsBits.ManageMessages, PermissionFlagsBits.ModerateMembers],
+  },
+  {
     name: 'Support',
     color: 0x5865f2,
     hoist: true,
@@ -34,8 +40,38 @@ const ROLE_PRESET = [
     permissions: [],
   },
   {
+    name: 'Designer',
+    color: 0xe91e63,
+    hoist: true,
+    permissions: [],
+  },
+  {
+    name: 'Partner',
+    color: 0x1abc9c,
+    hoist: true,
+    permissions: [],
+  },
+  {
+    name: 'VIP',
+    color: 0xf1c40f,
+    hoist: true,
+    permissions: [],
+  },
+  {
+    name: 'Booster',
+    color: 0xff73fa,
+    hoist: true,
+    permissions: [],
+  },
+  {
     name: 'Buyer',
     color: 0x57f287,
+    hoist: false,
+    permissions: [],
+  },
+  {
+    name: 'Verified',
+    color: 0x2ecc71,
     hoist: false,
     permissions: [],
   },
@@ -52,6 +88,11 @@ const ROLE_PRESET = [
     permissions: [],
   },
 ];
+
+export function formatRoleName(baseName, customName = '') {
+  const suffix = String(customName).trim().replace(/\s+/g, ' ');
+  return suffix ? `${baseName} ${suffix}` : baseName;
+}
 
 function mutedOverwrite(channel) {
   const deny = {};
@@ -72,7 +113,13 @@ function mutedOverwrite(channel) {
 export default {
   data: new SlashCommandBuilder()
     .setName('rolesetup')
-    .setDescription('Creates a ready-made role set for this server.'),
+    .setDescription('Creates 13 ready-made roles, optionally with your server name.')
+    .addStringOption((option) =>
+      option
+        .setName('name')
+        .setDescription('Text added after every role, e.g. Vmax makes “Member Vmax”')
+        .setMaxLength(40)
+    ),
 
   async execute(interaction) {
     if (!(await ensureAdmin(interaction))) return;
@@ -88,6 +135,11 @@ export default {
       });
     }
 
+    const suffix = String(interaction.options.getString('name') || '')
+      .trim()
+      .replace(/\s+/g, ' ');
+    const roleName = (baseName) => formatRoleName(baseName, suffix);
+
     await interaction.deferReply({ ephemeral: true });
     await interaction.guild.roles.fetch().catch(() => {});
 
@@ -95,32 +147,51 @@ export default {
     const resolved = {};
     const created = [];
     const existing = [];
+    const renamed = [];
+    const renameFailed = [];
     const failed = [];
 
     // Creating these from highest to lowest gives them the intended relative
     // order because Discord inserts each new role just above @everyone.
     for (const definition of ROLE_PRESET) {
+      const desiredName = roleName(definition.name);
       let role = stored[definition.name]
         ? interaction.guild.roles.cache.get(stored[definition.name])
         : null;
+
+      // Roles remembered from an earlier run are renamed when the custom name
+      // changes (for example, Member -> Member Vmax).
+      if (role && role.name !== desiredName) {
+        try {
+          role = await role.setName(
+            desiredName,
+            `Role naming updated by ${interaction.user.tag}`
+          );
+          renamed.push(role);
+        } catch (error) {
+          console.error(`Failed to rename ${definition.name} role:`, error);
+          renameFailed.push(desiredName);
+        }
+      }
+
       if (!role) {
         role = interaction.guild.roles.cache.find(
           (candidate) =>
             !candidate.managed &&
             candidate.id !== interaction.guild.roles.everyone.id &&
-            candidate.name.toLowerCase() === definition.name.toLowerCase()
+            candidate.name.toLowerCase() === desiredName.toLowerCase()
         );
       }
 
       if (role) {
         resolved[definition.name] = role.id;
-        existing.push(role);
+        if (!renamed.some((renamedRole) => renamedRole.id === role.id)) existing.push(role);
         continue;
       }
 
       try {
         role = await interaction.guild.roles.create({
-          name: definition.name,
+          name: desiredName,
           color: definition.color,
           hoist: definition.hoist,
           mentionable: false,
@@ -130,8 +201,8 @@ export default {
         resolved[definition.name] = role.id;
         created.push(role);
       } catch (error) {
-        console.error(`Failed to create ${definition.name} role:`, error);
-        failed.push(definition.name);
+        console.error(`Failed to create ${desiredName} role:`, error);
+        failed.push(desiredName);
       }
     }
 
@@ -174,10 +245,15 @@ export default {
       }
     }
 
-    const lines = ['✅ **Server role setup complete.**'];
+    const lines = ['✅ **13-role server setup complete.**'];
+    if (suffix) lines.push(`**Custom name:** ${suffix} *(example: Member ${suffix})*`);
     if (created.length) lines.push(`**Created:** ${created.join(', ')}`);
+    if (renamed.length) lines.push(`**Renamed:** ${renamed.join(', ')}`);
     if (existing.length) {
       lines.push(`**Already existed:** ${existing.join(', ')} *(permissions unchanged)*`);
+    }
+    if (renameFailed.length) {
+      lines.push(`**Could not rename:** ${renameFailed.join(', ')} *(check my role position)*`);
     }
     if (resolved.Buyer) lines.push(`**Auto buyer role:** <@&${resolved.Buyer}>`);
     if (resolved.Muted) {

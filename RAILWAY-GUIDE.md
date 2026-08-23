@@ -106,14 +106,14 @@ To ensure your keys, blacklist, and settings persist across rebuilds:
    ```
    ✅ Protect-Vmax Web & API listening on http://0.0.0.0:3000
    ✅ Logged in as YourBot#1234
-   ✅ Registered 25 global slash command(s)
+   ✅ Registered 26 global slash command(s)
    🔑 Validation API token ready
    ```
 3. Open your Railway public domain in your browser (`https://your-domain.up.railway.app`):
    - You will see the **Protect-Vmax Web Landing Page** with live bot status, loader code generator, and features.
 4. In your Discord server:
    - Run `/claimowner` to become the master owner.
-   - Run `/rolesetup` to create the server role preset.
+   - Run `/rolesetup name: Vmax` to create 13 named server roles (for example, Member Vmax).
    - Run `/setlog channel: #audit-logs` to configure key-system logging.
    - Run `/setup script: luasnapper` to deploy your whitelist panel.
    - Optional: run `/ticketsetup` and select a ticket category, support role, log channel, and panel channel to deploy private support tickets.

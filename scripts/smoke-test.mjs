@@ -21,11 +21,19 @@ const { loadCommandModules } = await import('../src/lib/commandSync.js');
 const commandCollection = new Collection();
 const commandModules = await loadCommandModules(commandCollection);
 for (const command of commandModules) command.data.toJSON();
-assert.equal(commandModules.length, 25, 'all slash commands load');
+assert.equal(commandModules.length, 26, 'all slash commands load');
 assert.ok(commandCollection.has('rolesetup'));
 assert.ok(commandCollection.has('clear'));
+assert.ok(commandCollection.has('features'));
 assert.ok(commandCollection.has('ticketsetup'));
 assert.ok(commandCollection.has('ticket'));
+const { FEATURES } = await import('../src/commands/features.js');
+const { ROLE_PRESET, formatRoleName } = await import('../src/commands/rolesetup.js');
+assert.equal(FEATURES.length, 25, '/features keeps the promised short 25-item list');
+assert.equal(ROLE_PRESET.length, 13, '/rolesetup keeps the promised 13-role preset');
+assert.ok(ROLE_PRESET.some((role) => role.name === 'Staff'));
+assert.ok(ROLE_PRESET.some((role) => role.name === 'Member'));
+assert.equal(formatRoleName('Member', '  Vmax  '), 'Member Vmax');
 
 // --- scripts ---
 await ensureScript('luasnapper');

@@ -75,7 +75,8 @@ You will only **click buttons and copy-paste**. Total time: ~15 minutes.
 In your Discord server, type:
 - `/ping` → the bot answers with its speed
 - `/server` → the bot shows info about your server
-- `/rolesetup` → creates the Admin, Moderator, Support, Developer, Buyer, Member, and Muted roles
+- `/rolesetup name: Vmax` → creates 13 roles such as Admin Vmax, Staff Vmax, Buyer Vmax, Member Vmax, and Muted Vmax
+- `/features` → shows the short list of 25 main bot features
 - `/clear amount: 25` → removes recent messages (requires Manage Messages)
 - `/setup script: luasnapper` → posts a **key whitelist panel** (like the Luarmor bots)
 - `/generatekey script: luasnapper` → creates a key; `/whitelist user: @friend` grants access

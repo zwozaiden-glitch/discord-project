@@ -12,7 +12,8 @@ A Discord bot built with [discord.js](https://discord.js.org/) v14, with a compl
 - 📦 **Script protection** — `/apply` uploads your `.lua`; the bot wraps it with a runtime whitelist check and users get a Protect-Vmax loader from **Get Script** / `/getscript`
 - 🎫 **Interactive key panels** — users click **Redeem Key / Get Script / My Key / Reset HWID** buttons (no commands needed)
 - 📨 **Private support tickets** — `/ticketsetup` creates an Open Ticket panel with one-ticket-per-user protection, staff claim/unclaim/close buttons, member add/remove commands, and a dedicated audit log
-- 🏷️ **One-command role setup** — `/rolesetup` creates Admin, Moderator, Support, Developer, Buyer, Member, and Muted roles and connects Buyer to the key system
+- 🏷️ **One-command role setup** — `/rolesetup name: Vmax` creates 13 roles such as Admin Vmax, Staff Vmax, Buyer Vmax, Member Vmax, and Muted Vmax
+- ✨ **Short feature menu** — `/features` shows all 25 main bot features in one compact list
 - 🧹 **Message cleanup** — `/clear amount:` lets members with Manage Messages remove up to 100 recent messages
 - 🏷️ **Auto buyer roles** — `/setbuyerrole` assigns a role automatically when users redeem; whitelist whole roles with `/whitelist role:`
 - 📊 **Analytics** — `/analytics` shows runs per day, top keys, HWID/status activity (keys & HWIDs masked)
@@ -84,7 +85,8 @@ public/                   # Web landing page assets
 
 ```bash
 /claimowner                                    # you become the bot owner
-/rolesetup                                     # create the server role preset
+/rolesetup name: Vmax                          # create 13 roles, e.g. Member Vmax
+/features                                      # show the short 25-feature list
 /clear amount: 25                              # delete recent messages
 /setlog channel: #logs                         # audit log channel
 /setbuyerrole role: @Buyers                    # auto role on redeem
