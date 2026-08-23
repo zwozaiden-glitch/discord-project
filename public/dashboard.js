@@ -155,12 +155,10 @@ async function getUserData(session) {
   const userId = session && session.user && session.user.id ? session.user.id : "demo";
   const url = (base ? base : "") + "/api/user/" + encodeURIComponent(userId);
 
-  const headers = {};
-  if (session && session.access_token) {
-    headers["Authorization"] = "Bearer " + session.access_token;
-  }
-
-  const res = await fetch(url, { headers: headers });
+  const res = await fetch(url, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error("HTTP " + res.status);
   const j = await res.json();
 
@@ -572,12 +570,6 @@ function showView(name) {
 
 /* ----------------------------- screens --------------------------------- */
 function loginGate() {
-  const notConfigured = PV.CONFIG.CLIENT_ID === "YOUR_DISCORD_CLIENT_ID";
-  const note = notConfigured
-    ? '<p class="gate-note">Set your Discord <code>CLIENT_ID</code> in <code>auth.js</code> to enable real login. ' +
-      'Until then, explore the UI with the <strong>demo</strong> session.</p>'
-    : '<p class="gate-note">Authorize Protect-Vmax with your Discord account to continue.</p>';
-
   return (
     '<section class="gate reveal is-visible">' +
       '<div class="glass gate-card">' +
@@ -588,10 +580,10 @@ function loginGate() {
         "</span>" +
         '<h1>Welcome to your <span class="gradient-text">dashboard</span></h1>' +
         "<p>Sign in with Discord to get your API key and host your scripts.</p>" +
-        note +
+        '<p class="gate-note">Authorize Protect-Vmax with your Discord account to continue.</p>' +
         '<div class="gate-actions">' +
           '<button class="btn btn-primary btn-lg" id="gate-login" type="button">Log in with Discord</button>' +
-          (notConfigured ? '<a class="btn btn-ghost btn-lg" href="dashboard.html?demo=1">View demo dashboard</a>' : "") +
+          (PV.CONFIG.DEMO_ENABLED ? '<a class="btn btn-ghost btn-lg" href="dashboard.html?demo=1">View demo dashboard</a>' : "") +
         "</div>" +
       "</div>" +
     "</section>"
@@ -633,14 +625,11 @@ async function bootDashboard() {
   const root = document.getElementById("dashboard-root");
   initSidebar();
 
-  const params = new URLSearchParams(location.search);
-  if (params.get("code")) {
-    try {
-      await PV.handleCallback();
-    } catch (e) {
-      root.innerHTML = errorScreen(e.message || "Login failed.");
-      return;
-    }
+  try {
+    await PV.restoreSession();
+  } catch (e) {
+    root.innerHTML = errorScreen(e.message || "Login failed.");
+    return;
   }
 
   let session = PV.getSession();

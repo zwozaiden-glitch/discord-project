@@ -21,7 +21,7 @@ A Discord bot built with [discord.js](https://discord.js.org/) v14, with a compl
 - 🛡️ **Blacklist** — revokes the key *and* blocks validation forever, even with new keys
 - ⏳ Key expiry + auto-renewal for active users, HWID reset cooldowns
 - 🌐 **Web Landing Page & HTTP API** — Monochrome Black & White landing page at `/`; `/api/v1/validate` + `/api/v1/load` for scripts; `/api/v1/status` + `/api/v1/key` (token auth) for management
-- 🔐 **Discord OAuth login** — the website's "Login with Discord" button redirects to `/callback`, which exchanges the code and shows who logged in (needs `DISCORD_CLIENT_SECRET`; redirect URI = `PUBLIC_URL` + `/callback`)
+- 🔐 **Discord OAuth login** — the website starts login at `/auth/discord`; Discord returns to `/callback`, then the server creates a secure session and opens the dashboard (needs `DISCORD_CLIENT_SECRET`; redirect URI = `PUBLIC_URL` + `/callback`). The callback is an endpoint, not the website homepage.
 - 🚂 **Railway 24/7 Hosting Ready** — automatic port binding, railway schema config, volume persistence support
 - 🧩 Modular structure — drop a file into `src/commands/` or `src/events/` and it's auto-loaded
 - 🔐 Secrets kept in `.env` (never committed); data stored as JSON in `data/`
