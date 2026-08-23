@@ -7,7 +7,20 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const DATA_DIR = process.env.DATA_DIR || join(__dirname, '..', '..', 'data');
 
-const COLLECTIONS = ['scripts', 'keys', 'whitelist', 'blacklist', 'cooldowns', 'panels', 'settings', 'scriptsources', 'analytics', 'buyerroles'];
+const COLLECTIONS = [
+  'scripts',
+  'keys',
+  'whitelist',
+  'blacklist',
+  'cooldowns',
+  'panels',
+  'settings',
+  'scriptsources',
+  'analytics',
+  'buyerroles',
+  'ticketconfigs',
+  'tickets',
+];
 
 const DEFAULT_VALUES = {
   analytics: [],

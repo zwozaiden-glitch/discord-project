@@ -2,6 +2,7 @@
 //   ownerId      — the user who claimed the bot (/claimowner) or was set via OWNER_IDS
 //   apiToken     — auto-generated validation API secret (or set via API_TOKEN env)
 //   logChannels  — per-guild channel IDs set with /setlog
+//   serverRoles  — IDs created/adopted by /rolesetup
 import { randomBytes } from 'node:crypto';
 import { CONFIG } from './config.js';
 import { db, save } from './store.js';
@@ -80,6 +81,26 @@ export function clearBuyerRole(guildId, script) {
   if (!guildId) return false;
   db.settings.buyerRoles = db.settings.buyerRoles || {};
   delete db.settings.buyerRoles[script ? `${guildId}:${script}` : String(guildId)];
+  save('settings');
+  return true;
+}
+
+// ---- Server role preset (/rolesetup) ----
+// Stores the role IDs so rerunning setup still finds roles that were renamed.
+
+export function getServerRoles(guildId) {
+  if (!guildId) return {};
+  return { ...(db.settings.serverRoles?.[String(guildId)] || {}) };
+}
+
+export function setServerRoles(guildId, roles) {
+  if (!guildId) return false;
+  db.settings.serverRoles = db.settings.serverRoles || {};
+  db.settings.serverRoles[String(guildId)] = Object.fromEntries(
+    Object.entries(roles || {})
+      .filter(([, roleId]) => roleId)
+      .map(([name, roleId]) => [name, String(roleId)])
+  );
   save('settings');
   return true;
 }

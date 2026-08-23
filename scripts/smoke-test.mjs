@@ -15,6 +15,26 @@ const keys = await import('../src/lib/keys.js');
 
 const { ensureScript, makeKey, generateKeys, claimKey, getUserWhitelist, isWhitelisted, validateKey, blacklistUser, isBlacklisted, resetHwidForUser, getCooldownRemaining, purgeExpired, deleteUserKey } = keySystem;
 
+// --- slash command loading/schema validation ---
+const { Collection } = await import('discord.js');
+const { loadCommandModules } = await import('../src/lib/commandSync.js');
+const commandCollection = new Collection();
+const commandModules = await loadCommandModules(commandCollection);
+for (const command of commandModules) command.data.toJSON();
+assert.equal(commandModules.length, 26, 'all slash commands load');
+assert.ok(commandCollection.has('rolesetup'));
+assert.ok(commandCollection.has('clear'));
+assert.ok(commandCollection.has('features'));
+assert.ok(commandCollection.has('ticketsetup'));
+assert.ok(commandCollection.has('ticket'));
+const { FEATURES } = await import('../src/commands/features.js');
+const { ROLE_PRESET, formatRoleName } = await import('../src/commands/rolesetup.js');
+assert.equal(FEATURES.length, 25, '/features keeps the promised short 25-item list');
+assert.equal(ROLE_PRESET.length, 13, '/rolesetup keeps the promised 13-role preset');
+assert.ok(ROLE_PRESET.some((role) => role.name === 'Staff'));
+assert.ok(ROLE_PRESET.some((role) => role.name === 'Member'));
+assert.equal(formatRoleName('Member', '  Vmax  '), 'Member Vmax');
+
 // --- scripts ---
 await ensureScript('luasnapper');
 await ensureScript('other script');
@@ -99,7 +119,18 @@ assert.equal(isWhitelisted('luasnapper', 'user-4'), false, 'expired entry purged
 assert.equal(validateKey({ inputKey: rawExp, hwid: 'X', script: 'luasnapper' }).code, 'voided');
 
 // --- settings: owner claim + log channel + api token + buyer role ---
-const { claimOwner, isBotOwner, setLogChannel, getLogChannelId, ensureApiToken, setBuyerRole, clearBuyerRole, getBuyerRole } = await import('../src/lib/settings.js');
+const {
+  claimOwner,
+  isBotOwner,
+  setLogChannel,
+  getLogChannelId,
+  ensureApiToken,
+  setBuyerRole,
+  clearBuyerRole,
+  getBuyerRole,
+  setServerRoles,
+  getServerRoles,
+} = await import('../src/lib/settings.js');
 
 assert.equal(isBotOwner('user-1'), false, 'nobody is owner yet');
 let claim = claimOwner('user-1');
@@ -127,6 +158,68 @@ assert.equal(getBuyerRole('guild-1', 'luasnapper'), 'role-222', 'per-script over
 assert.equal(getBuyerRole('guild-1', 'other script'), 'role-111', 'fallback to global');
 clearBuyerRole('guild-1', 'luasnapper');
 assert.equal(getBuyerRole('guild-1', 'luasnapper'), 'role-111', 'cleared per-script');
+
+// --- server role preset IDs ---
+setServerRoles('guild-1', {
+  Admin: 'role-admin',
+  Support: 'role-support',
+  Buyer: 'role-buyer',
+  Empty: null,
+});
+assert.deepEqual(getServerRoles('guild-1'), {
+  Admin: 'role-admin',
+  Support: 'role-support',
+  Buyer: 'role-buyer',
+});
+const roleSnapshot = getServerRoles('guild-1');
+roleSnapshot.Admin = 'changed-only-in-copy';
+assert.equal(getServerRoles('guild-1').Admin, 'role-admin', 'role settings return a safe copy');
+
+// --- ticket configuration + persistent open-ticket records ---
+const ticketStore = await import('../src/lib/ticketStore.js');
+let ticketConfig = ticketStore.setTicketConfig('guild-1', {
+  categoryId: 'category-1',
+  supportRoleId: 'support-1',
+  logChannelId: 'ticket-log-1',
+  panelChannelId: 'ticket-panel-1',
+  panelMessageId: 'panel-message-1',
+  title: 'Help Desk',
+  description: 'Open a private support ticket.',
+});
+assert.equal(ticketConfig.supportRoleId, 'support-1');
+assert.equal(ticketStore.getTicketConfig('guild-1').title, 'Help Desk');
+assert.equal(ticketStore.takeNextTicketNumber('guild-1'), 1);
+assert.equal(ticketStore.takeNextTicketNumber('guild-1'), 2);
+
+ticketStore.createTicketRecord({
+  channelId: 'ticket-channel-1',
+  guildId: 'guild-1',
+  userId: 'ticket-user-1',
+  number: 1,
+});
+assert.equal(
+  ticketStore.findOpenTicket('guild-1', 'ticket-user-1').channelId,
+  'ticket-channel-1',
+  'one open ticket can be found by user'
+);
+ticketStore.updateTicket('ticket-channel-1', {
+  claimedBy: 'staff-1',
+  addedUserIds: ['guest-1', 'guest-1'],
+});
+assert.equal(ticketStore.getTicket('ticket-channel-1').claimedBy, 'staff-1');
+assert.deepEqual(ticketStore.getTicket('ticket-channel-1').addedUserIds, ['guest-1']);
+assert.equal(ticketStore.removeTicket('ticket-channel-1'), true);
+assert.equal(ticketStore.findOpenTicket('guild-1', 'ticket-user-1'), null);
+
+// Reconfiguration keeps ticket numbering monotonic.
+ticketConfig = ticketStore.setTicketConfig('guild-1', {
+  categoryId: 'category-2',
+  supportRoleId: 'support-2',
+  logChannelId: 'ticket-log-2',
+  panelChannelId: 'ticket-panel-2',
+  panelMessageId: 'panel-message-2',
+});
+assert.equal(ticketConfig.nextNumber, 3);
 
 // --- script upload + protected delivery ---
 const store = await import('../src/lib/store.js');

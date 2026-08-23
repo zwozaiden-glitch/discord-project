@@ -10,7 +10,11 @@ A Discord bot built with [discord.js](https://discord.js.org/) v14, with a compl
 - 👑 **No env config needed** — `/claimowner` makes you the bot owner, `/setlog` picks the log channel, API token auto-generates on first boot
 - 🔐 **Key system**: `/generatekey`, `/bulkgen`, `/whitelist`, `/blacklist`, `/deletekey`, `/keydrop`, `/redeem`, `/keyinfo`, `/resethwid`, `/scripts`, `/setup`, `/unsetup`
 - 📦 **Script protection** — `/apply` uploads your `.lua`; the bot wraps it with a runtime whitelist check and users get a Protect-Vmax loader from **Get Script** / `/getscript`
-- 🎫 **Interactive panels** — users click **Redeem Key / Get Script / My Key / Reset HWID** buttons (no commands needed)
+- 🎫 **Interactive key panels** — users click **Redeem Key / Get Script / My Key / Reset HWID** buttons (no commands needed)
+- 📨 **Private support tickets** — `/ticketsetup` creates an Open Ticket panel with one-ticket-per-user protection, staff claim/unclaim/close buttons, member add/remove commands, and a dedicated audit log
+- 🏷️ **One-command role setup** — `/rolesetup name: Vmax` creates 13 roles such as Admin Vmax, Staff Vmax, Buyer Vmax, Member Vmax, and Muted Vmax
+- ✨ **Short feature menu** — `/features` shows all 25 main bot features in one compact list
+- 🧹 **Message cleanup** — `/clear amount:` lets members with Manage Messages remove up to 100 recent messages
 - 🏷️ **Auto buyer roles** — `/setbuyerrole` assigns a role automatically when users redeem; whitelist whole roles with `/whitelist role:`
 - 📊 **Analytics** — `/analytics` shows runs per day, top keys, HWID/status activity (keys & HWIDs masked)
 - 🔑 **HWID locking** — first run binds the key to the user's device; sharing = `HWID mismatch`
@@ -37,7 +41,9 @@ src/
     ├── store.js          # JSON file database
     ├── settings.js       # Owner claim, log channel, buyer roles, API token
     ├── keys.js           # Key format/generate/normalize
-    ├── panel.js          # Interactive panel buttons + redeem modal
+    ├── panel.js          # Interactive key-panel buttons + redeem modal
+    ├── tickets.js        # Ticket panels, private channels, and staff controls
+    ├── ticketStore.js    # Persistent ticket configuration/open-ticket records
     ├── protect.js        # Wraps scripts with the runtime whitelist check
     ├── analytics.js      # Validation run analytics
     ├── roles.js          # Auto buyer role assignment
@@ -58,7 +64,7 @@ public/                   # Web landing page assets
    - **Bot** → Reset Token → copy it; turn ON **Message Content Intent**
    - **General Information** → copy the **Application ID**
 
-2. **Invite the bot**: OAuth2 → URL Generator → scopes `bot` + `applications.commands` → permissions `Send Messages`, `Embed Links`, `Manage Roles` → open the URL → invite
+2. **Invite the bot**: OAuth2 → URL Generator → scopes `bot` + `applications.commands` → permissions `View Channels`, `Send Messages`, `Embed Links`, `Read Message History`, `Manage Messages`, `Manage Channels`, and `Manage Roles` → open the URL → invite
 
 3. **Configure**:
    ```bash
@@ -79,6 +85,9 @@ public/                   # Web landing page assets
 
 ```bash
 /claimowner                                    # you become the bot owner
+/rolesetup name: Vmax                          # create 13 roles, e.g. Member Vmax
+/features                                      # show the short 25-feature list
+/clear amount: 25                              # delete recent messages
 /setlog channel: #logs                         # audit log channel
 /setbuyerrole role: @Buyers                    # auto role on redeem
 /setup script: luasnapper channel: #whitelist  # post the panel
@@ -88,9 +97,21 @@ public/                   # Web landing page assets
 /whitelist script: luasnapper user: @buyer     # give a buyer a key
 /keydrop script: luasnapper amount: 3          # public drop
 /analytics                                     # see script activity
+
+# Ticket setup (choose these from Discord's slash-command option menus):
+/ticketsetup category: Tickets support_role: @Support log_channel: #ticket-logs panel_channel: #open-a-ticket
 ```
 
-➡️ Full docs: [KEY-SYSTEM-GUIDE.md](KEY-SYSTEM-GUIDE.md)
+### Ticket staff workflow
+
+- A member presses **Open Ticket** and receives one private channel. The same member cannot open a second ticket until the first is closed.
+- The configured support role can use the **Claim**, **Unclaim**, and **Close** buttons.
+- Staff can run `/ticket add user: @member` or `/ticket remove user: @member` inside a ticket.
+- Staff or the ticket opener can run `/ticket close reason: ...`; button closes require confirmation.
+- Open, claim, unclaim, member-access, and close events are written to the configured ticket log channel.
+- Ticket configuration and open-ticket records persist in `DATA_DIR`, so a Railway volume at `/data` is recommended.
+
+➡️ Full key-system docs: [KEY-SYSTEM-GUIDE.md](KEY-SYSTEM-GUIDE.md)
 
 ## Hosting on Railway
 

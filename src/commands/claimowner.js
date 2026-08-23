@@ -35,7 +35,7 @@ export default {
 
     console.log(`✅ Owner claimed: ${interaction.user.tag} (${interaction.user.id})`);
     await interaction.reply({
-      content: `🎉 **You are now the bot owner, ${interaction.user}!**\n\nYou can use every admin command:\n\`/setup\`, \`/generatekey\`, \`/bulkgen\`, \`/whitelist\`, \`/blacklist\`, \`/deletekey\`, \`/keydrop\`, \`/resethwid\`, \`/setlog\`\n\nNext: run \`/setlog\` to choose where key events get logged.`,
+      content: `🎉 **You are now the bot owner, ${interaction.user}!**\n\nYou can use every admin command:\n\`/rolesetup\`, \`/clear\`, \`/setup\`, \`/ticketsetup\`, \`/generatekey\`, \`/bulkgen\`, \`/whitelist\`, \`/blacklist\`, \`/deletekey\`, \`/keydrop\`, \`/resethwid\`, \`/setlog\`\n\nNext: run \`/rolesetup\` to create the server roles, \`/setlog\` to choose where events are logged, or \`/ticketsetup\` to create a support panel.`,
       ephemeral: true,
     });
   },

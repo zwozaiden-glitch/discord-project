@@ -26,8 +26,13 @@ You will only **click buttons and copy-paste**. Total time: ~15 minutes.
    - ✅ `bot`
    - ✅ `applications.commands`
 3. A new box appears below (**Bot Permissions**). Check:
+   - ✅ `View Channels`
    - ✅ `Send Messages`
    - ✅ `Embed Links`
+   - ✅ `Read Message History`
+   - ✅ `Manage Messages` *(required for `/clear`)*
+   - ✅ `Manage Channels` *(required for private support tickets and Muted channel rules)*
+   - ✅ `Manage Roles` *(required for automatic buyer roles)*
 4. Scroll to the bottom — copy the **Generated URL** and open it in a new browser tab.
 5. Choose **your server** from the list → **Authorize**.
 
@@ -70,6 +75,9 @@ You will only **click buttons and copy-paste**. Total time: ~15 minutes.
 In your Discord server, type:
 - `/ping` → the bot answers with its speed
 - `/server` → the bot shows info about your server
+- `/rolesetup name: Vmax` → creates 13 roles such as Admin Vmax, Staff Vmax, Buyer Vmax, Member Vmax, and Muted Vmax
+- `/features` → shows the short list of 25 main bot features
+- `/clear amount: 25` → removes recent messages (requires Manage Messages)
 - `/setup script: luasnapper` → posts a **key whitelist panel** (like the Luarmor bots)
 - `/generatekey script: luasnapper` → creates a key; `/whitelist user: @friend` grants access
 
