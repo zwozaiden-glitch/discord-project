@@ -1,657 +1,672 @@
-/* ==========================================================================
-   Protect-Vmax — dashboard.js
-   Sidebar dashboard. Each Discord user gets their own API key that hosts
-   their scripts: the loader fetches the hosted .lua using that key.
-   ⚠️ MOCK DATA — wire the lists / actions to your real Protect-Vmax API.
-   ========================================================================== */
-
 const PV = window.PVAuth;
 
-/* ==========================================================================
-   CONFIG — connect the dashboard to your backend.
-   API_BASE : your Railway (or other) public URL that serves the JSON API.
-              Leave "" to keep the local empty/zero state (no fake data).
-              Example: "https://discord-project-production-a058.up.railway.app"
-   HOST_BASE: where hosted .lua files live (used to build loader URLs).
-              Use YOUR short custom domain in production, e.g.
-              "https://vmax.dev/s"  ->  loader: loadstring(game:HttpGet("https://vmax.dev/s/<hash>"))()
-   ========================================================================== */
-const CONFIG = {
-  API_BASE: "",
-  HOST_BASE: window.location.origin + "/scripts/hosted",
+const STATE = {
+  session: null,
+  data: null,
+  view: 'overview',
 };
 
-/* Real data comes from your backend. Left empty on purpose — the dashboard
-   shows 0 / empty states until your API returns something. */
-const MOCK = {
-  discordInvite: "https://discord.gg/xFeX95Evce",
-  ticketUrl: "https://discord.gg/xFeX95Evce",
-  plan: "Vmax",
-  scripts: [
-    {
-      name: "Vmax",
-      status: "online",
-      hwid: 1,
-      executions: 12,
-      created: "2026-08-22",
-    },
-  ], // fallback script for demo sessions
+const TITLES = {
+  overview: 'Overview',
+  rules: 'Rules',
+  activity: 'Activity',
+  settings: 'Settings',
 };
 
-/* ----------------------------- helpers --------------------------------- */
-function escapeHtml(str) {
-  return String(str == null ? "" : str)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+function escapeHtml(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
-/* Escape for use inside a single-quoted HTML attribute. */
-function escAttr(str) {
-  return String(str == null ? "" : str)
-    .replace(/&/g, "&amp;")
-    .replace(/'/g, "&#39;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+function fmtNumber(value) {
+  return new Intl.NumberFormat().format(Number(value) || 0);
 }
 
-/* Deterministic hex hash (no crypto needed — works in every environment). */
-function strHash(str) {
-  let h = 5381;
-  for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) + h) + str.charCodeAt(i);
-    h |= 0;
+function fmtBytes(bytes) {
+  const value = Number(bytes) || 0;
+  if (value < 1024) return value + ' B';
+  if (value < 1024 * 1024) return (value / 1024).toFixed(1) + ' KB';
+  if (value < 1024 * 1024 * 1024) return (value / (1024 * 1024)).toFixed(2) + ' MB';
+  return (value / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+}
+
+function fmtDate(value) {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleString();
+  } catch {
+    return value;
   }
-  return h >>> 0;
-}
-function mulberry32(a) {
-  return function () {
-    a |= 0; a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-function hashHex(str, len) {
-  const r = mulberry32(strHash(str));
-  let s = "";
-  while (s.length < len) s += Math.floor(r() * 16).toString(16);
-  return s.slice(0, len);
-}
-
-/* Each Discord user gets a stable, unique API key. */
-function deriveApiKey(user) {
-  const seed = (user.id || "demo") + "|" + (user.username || "demo");
-  return "VMAX-" + hashHex(seed, 16).toUpperCase();
-}
-
-/* The loader your buyers paste into their executor. */
-function loaderSnippet(apiKey, hostedUrl) {
-  void apiKey;
-  return 'loadstring(game:HttpGet("' + hostedUrl + '"))()';
-}
-
-/* ----------------------------- state ----------------------------------- */
-let SESSION = null;
-let VIEW = "dashboard";
-
-/* Build a hosted URL for a script from its apiKey + name (dashboard-side,
-   so the loader URL always matches HOST_BASE). */
-function scriptHostedUrl(apiKey, name) {
-  const hash = hashHex(apiKey + "::" + name, 64);
-  return CONFIG.HOST_BASE + "/" + hash + ".lua";
-}
-
-function normalizeScript(s, apiKey) {
-  const name = s.name || "script";
-  return {
-    name: name,
-    status: s.status || "paused",
-    hwid: s.hwid || 0,
-    executions: s.executions || 0,
-    created: s.created || "",
-    hostedHash: s.hostedHash || hashHex(apiKey + "::" + name, 64),
-    hostedUrl: s.hostedUrl || scriptHostedUrl(apiKey, name),
-  };
-}
-
-/* Local fallback data (for demo sessions or when offline). */
-function localData(session) {
-  const apiKey = deriveApiKey(session.user);
-  const isDemo = Boolean(session && session.demo);
-  const fallbackScripts = isDemo
-    ? [
-        normalizeScript(
-          {
-            name: "Vmax",
-            status: "online",
-            hwid: 1,
-            executions: 12,
-            created: "2026-08-22",
-          },
-          apiKey
-        ),
-      ]
-    : [];
-
-  return {
-    user: session.user,
-    apiKey: apiKey,
-    plan: isDemo ? "Demo" : (MOCK.plan || "Free"),
-    scripts: fallbackScripts,
-  };
-}
-
-/* Fetch real data from your Railway API. Falls back to demo/local data on any failure. */
-async function getUserData(session) {
-  if (session && session.demo) {
-    return localData(session);
-  }
-
-  const base = (CONFIG.API_BASE || "").replace(/\/+$/, "");
-  const userId = session && session.user && session.user.id ? session.user.id : "demo";
-  const url = (base ? base : "") + "/api/user/" + encodeURIComponent(userId);
-
-  const res = await fetch(url, {
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  const j = await res.json();
-
-  const apiKey = j.apiKey || deriveApiKey(session.user);
-  return {
-    user: session.user,
-    apiKey: apiKey,
-    plan: j.plan || (session.demo ? "Demo" : (MOCK.plan || "Free")),
-    scripts: Array.isArray(j.scripts)
-      ? j.scripts.map(function (s) { return normalizeScript(s, apiKey); })
-      : [],
-  };
-}
-
-/* ----------------------------- shared bits ----------------------------- */
-function statusPill(status) {
-  const map = {
-    online: "Online", active: "Active", paused: "Paused",
-    expired: "Expired", hwid_mismatch: "HWID mismatch", blacklisted: "Blacklisted",
-  };
-  const label = map[status] || status;
-  return '<span class="status status-' + status + '">' + label + "</span>";
 }
 
 function toast(message) {
-  const wrap = document.getElementById("toast-wrap");
+  const wrap = document.getElementById('toast-wrap');
   if (!wrap) return;
-  const t = document.createElement("div");
-  t.className = "toast";
-  t.textContent = message;
-  wrap.appendChild(t);
-  requestAnimationFrame(function () { t.classList.add("show"); });
-  setTimeout(function () {
-    t.classList.remove("show");
-    setTimeout(function () { t.remove(); }, 300);
+  const item = document.createElement('div');
+  item.className = 'toast';
+  item.textContent = message;
+  wrap.appendChild(item);
+  requestAnimationFrame(() => item.classList.add('show'));
+  setTimeout(() => {
+    item.classList.remove('show');
+    setTimeout(() => item.remove(), 250);
   }, 2400);
 }
 
-function copyText(text) {
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    return navigator.clipboard.writeText(text);
-  }
-  const ta = document.createElement("textarea");
-  ta.value = text;
-  ta.style.position = "fixed";
-  ta.style.opacity = "0";
-  document.body.appendChild(ta);
-  ta.select();
-  try { document.execCommand("copy"); } catch (e) {}
-  document.body.removeChild(ta);
-  return Promise.resolve();
-}
+async function api(path, options) {
+  const res = await fetch(path, {
+    credentials: 'same-origin',
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options && options.headers ? options.headers : {}),
+    },
+    ...options,
+  });
 
-/* ----------------------------- views ----------------------------------- */
-const VIEW_TITLES = {
-  dashboard: "Dashboard",
-  scripts: "Scripts",
-  keys: "API Keys",
-  bot: "Bot",
-  settings: "Settings",
-};
-
-function viewDashboard(d) {
-  const name = d.user.global_name || d.user.username;
-  const hasScripts = d.scripts.length > 0;
-  const primary = d.scripts[0];
-  const snippet = hasScripts ? loaderSnippet(d.apiKey, primary.hostedUrl) : "";
-  const totalHwid = d.scripts.reduce(function (s, x) { return s + x.hwid; }, 0);
-  const totalExec = d.scripts.reduce(function (s, x) { return s + x.executions; }, 0);
-
-  return (
-    '<section class="view">' +
-      '<div class="view-head">' +
-        '<h1 class="view-title">Welcome back, <span class="gradient-text">' + escapeHtml(name) + "</span></h1>" +
-        '<p class="view-sub">Your API key hosts your scripts. Share the loader — never your key.</p>' +
-      "</div>" +
-
-      '<div class="stats-row">' +
-        statCard(d.scripts.length, "Scripts") +
-        statCard(totalHwid, "HWID locks") +
-        statCard(totalExec, "Executions") +
-        statCard(d.plan, "Plan") +
-      "</div>" +
-
-      '<div class="grid-2">' +
-        // API key
-        '<div class="glass card-pad">' +
-          '<div class="card-head"><h3>Your API key</h3><span class="live-dot" title="connected"></span></div>' +
-          '<p class="muted small">This key authorizes your loader to fetch your hosted scripts and links your account to the Discord bot.</p>' +
-          '<div class="keybox">' +
-            '<code class="key-text">' + escapeHtml(d.apiKey) + "</code>" +
-            '<button class="btn btn-ghost btn-sm" data-copy="' + escAttr(d.apiKey) + '">Copy</button>' +
-            '<button class="btn btn-ghost btn-sm" id="regen-key" type="button">Regenerate</button>' +
-          "</div>" +
-          '<div class="conn-row">' +
-            '<span class="conn on">Discord ✓</span>' +
-            '<span class="conn on">Bot ✓</span>' +
-            '<span class="conn on">Hosting ✓</span>' +
-          "</div>" +
-        "</div>" +
-
-        // Host script
-        hostCard(d, hasScripts, snippet) +
-      "</div>" +
-
-      // Scripts preview
-      '<div class="glass card-pad mt">' +
-        '<div class="card-head"><h3>Your scripts</h3>' +
-          (hasScripts ? '<button class="btn btn-ghost btn-sm" type="button" data-goto="scripts">View all</button>' : "") +
-        "</div>" +
-        (hasScripts
-          ? '<div class="script-list">' + d.scripts.slice(0, 3).map(scriptRow).join("") + "</div>"
-          : emptyState("No scripts yet", "Generate your first script with the bot and it will show up here.", "bot", "Generate via bot")) +
-      "</div>" +
-    "</section>"
-  );
-}
-
-function hostCard(d, hasScripts, snippet) {
-  if (!hasScripts) {
-    return (
-      '<div class="glass card-pad">' +
-        '<div class="card-head"><h3>Host your script</h3></div>' +
-        emptyState("Nothing hosted yet", "Generate a script with the bot to get your hosted loader.", "bot", "Open bot") +
-      "</div>"
-    );
-  }
-  const primary = d.scripts[0];
-  return (
-    '<div class="glass card-pad">' +
-      '<div class="card-head"><h3>Host your script</h3></div>' +
-      '<p class="muted small">Paste this into your executor. It loads your latest script from the host using your key.</p>' +
-      '<div class="code-mini">' +
-        '<pre><code>' + escapeHtml(snippet) + "</code></pre>" +
-        '<button class="btn btn-primary btn-sm" data-copy="' + escAttr(snippet) + '">Copy loader</button>' +
-      "</div>" +
-      '<p class="muted small break-all">Hosted at: <code>' + escapeHtml(primary.hostedUrl) + "</code></p>" +
-    "</div>"
-  );
-}
-
-function viewScripts(d) {
-  const has = d.scripts.length > 0;
-  const table = has
-    ? '<div class="table-wrap"><table class="data-table">' +
-        "<thead><tr><th>Script</th><th>Status</th><th>Hosted file</th><th>HWID</th><th>Executions</th><th>Created</th><th></th></tr></thead>" +
-        "<tbody>" +
-          d.scripts.map(function (s) {
-            const snip = loaderSnippet(d.apiKey, s.hostedUrl);
-            return (
-              "<tr>" +
-                "<td><span class='mono'>" + escapeHtml(s.name) + "</span></td>" +
-                "<td>" + statusPill(s.status) + "</td>" +
-                "<td><code class='host-cell break-all'>" + escapeHtml(s.hostedHash.slice(0, 16)) + "…lua</code></td>" +
-                "<td>" + s.hwid + "</td>" +
-                "<td>" + s.executions + "</td>" +
-                "<td class='muted'>" + escapeHtml(s.created) + "</td>" +
-                "<td class='row-actions'>" +
-                  "<button class='btn btn-ghost btn-sm' data-copy='" + escAttr(s.hostedUrl) + "'>Copy URL</button>" +
-                  "<button class='btn btn-ghost btn-sm' data-copy='" + escAttr(snip) + "'>Copy loader</button>" +
-                "</td>" +
-              "</tr>"
-            );
-          }).join("") +
-        "</tbody>" +
-      "</table></div>"
-    : emptyState("No scripts yet", "Generate a script with the bot — it will appear here.", "bot", "Open bot");
-
-  return (
-    '<section class="view">' +
-      '<div class="view-head"><h1 class="view-title">Your <span class="gradient-text">scripts</span></h1>' +
-        '<p class="view-sub">Every script you generate through the bot is hosted here and served by your loader.</p></div>' +
-      '<div class="glass card-pad">' + table + "</div>" +
-    "</section>"
-  );
-}
-
-function viewKeys(d) {
-  const hasScripts = d.scripts.length > 0;
-  const primary = d.scripts[0];
-  const snippet = hasScripts ? loaderSnippet(d.apiKey, primary.hostedUrl) : "";
-  return (
-    '<section class="view">' +
-      '<div class="view-head"><h1 class="view-title">API <span class="gradient-text">keys</span></h1>' +
-        '<p class="view-sub">One key per account. It connects your Discord login, your bot, and your hosted scripts.</p></div>' +
-      '<div class="grid-2">' +
-        '<div class="glass card-pad">' +
-          '<div class="card-head"><h3>Primary key</h3></div>' +
-          '<div class="keybox">' +
-            '<code class="key-text">' + escapeHtml(d.apiKey) + "</code>" +
-            '<button class="btn btn-ghost btn-sm" data-copy="' + escAttr(d.apiKey) + '">Copy</button>' +
-            '<button class="btn btn-ghost btn-sm" id="regen-key" type="button">Regenerate</button>' +
-          "</div>" +
-          '<div class="conn-row">' +
-            '<span class="conn on">Discord ✓</span>' +
-            '<span class="conn on">Bot ✓</span>' +
-            '<span class="conn on">Hosting ✓</span>' +
-          "</div>" +
-        "</div>" +
-        '<div class="glass card-pad">' +
-          '<div class="card-head"><h3>How it connects</h3></div>' +
-          '<ol class="steps-list">' +
-            "<li><strong>Log in</strong> with Discord — your account is created automatically.</li>" +
-            "<li><strong>Your key</strong> is issued and linked to the Protect-Vmax bot.</li>" +
-            "<li><strong>Generate a script</strong> via the bot — it is hosted under your key.</li>" +
-            "<li><strong>Your loader</strong> calls the host with the key and runs the script.</li>" +
-          "</ol>" +
-        "</div>" +
-      "</div>" +
-      '<div class="glass card-pad mt">' +
-        '<div class="card-head"><h3>Your loader</h3></div>' +
-        (hasScripts
-          ? '<div class="code-mini">' +
-            '<pre><code>' + escapeHtml(snippet) + "</code></pre>" +
-            '<button class="btn btn-primary btn-sm" data-copy="' + escAttr(snippet) + '">Copy loader</button>' +
-            "</div>"
-          : emptyState("No hosted script yet", "Generate a script with the bot to get your loader.", "bot", "Open bot")) +
-      "</div>" +
-    "</section>"
-  );
-}
-
-function viewBot(d) {
-  return (
-    '<section class="view">' +
-      '<div class="view-head"><h1 class="view-title">Discord <span class="gradient-text">bot</span></h1>' +
-        '<p class="view-sub">The bot turns your key into hosted scripts and delivers loaders to your server.</p></div>' +
-      '<div class="grid-2">' +
-        '<div class="glass card-pad">' +
-          '<div class="card-head"><h3>Connection</h3></div>' +
-          '<div class="conn-row">' +
-            '<span class="conn on">Discord ✓</span>' +
-            '<span class="conn on">Bot ✓</span>' +
-          "</div>" +
-          '<p class="muted small mt">Your account is linked through your Discord login, so the bot already knows your API key.</p>' +
-          '<div class="gate-actions mt">' +
-            '<a class="btn btn-primary btn-sm" href="' + MOCK.discordInvite + '" target="_blank" rel="noopener">Invite bot</a>' +
-            '<a class="btn btn-ghost btn-sm" href="' + MOCK.ticketUrl + '" target="_blank" rel="noopener">Need help</a>' +
-          "</div>" +
-        "</div>" +
-        '<div class="glass card-pad">' +
-          '<div class="card-head"><h3>Generate a script</h3></div>' +
-          '<ol class="steps-list">' +
-            "<li>Invite the bot to your server.</li>" +
-            "<li>Run <code class='mono'>/setup</code> to register a script name.</li>" +
-            "<li>Run <code class='mono'>/bulkgen</code> or <code class='mono'>/whitelist</code> to issue keys.</li>" +
-            "<li>The script appears in <strong>Scripts</strong>, hosted under your key.</li>" +
-          "</ol>" +
-        "</div>" +
-      "</div>" +
-    "</section>"
-  );
-}
-
-function viewSettings(d) {
-  const u = d.user;
-  return (
-    '<section class="view">' +
-      '<div class="view-head"><h1 class="view-title">Settings</h1>' +
-        '<p class="view-sub">Your account is managed through Discord.</p></div>' +
-      '<div class="grid-2">' +
-        '<div class="glass card-pad">' +
-          '<div class="card-head"><h3>Account</h3></div>' +
-          '<div class="account-row">' +
-            (PV.avatarUrl(u, 96) ? '<img class="account-avatar" src="' + PV.avatarUrl(u, 96) + '" alt="" />' : '<div class="account-avatar blank"></div>') +
-            "<div>" +
-              '<div class="account-name">' + escapeHtml(u.global_name || u.username) + "</div>" +
-              '<div class="muted small">@' + escapeHtml(u.username) + " · " + escapeHtml(u.discriminator || "0") + "</div>" +
-            "</div>" +
-          "</div>" +
-          '<ul class="kv">' +
-            kv("User ID", u.id) +
-            kv("Email", u.email || "—") +
-            kv("Plan", d.plan) +
-            kv("API key", d.apiKey) +
-          "</ul>" +
-        "</div>" +
-        '<div class="glass card-pad">' +
-          '<div class="card-head"><h3>Session</h3></div>' +
-          '<p class="muted small">You are signed in with Discord. Logging out clears this device\'s session.</p>' +
-          '<div class="gate-actions mt">' +
-            '<button class="btn btn-cta" id="settings-logout" type="button">Log out</button>' +
-            (d.demo ? '<span class="muted small">Demo session — no real Discord account.</span>' : "") +
-          "</div>" +
-        "</div>" +
-      "</div>" +
-    "</section>"
-  );
-}
-
-/* ----------------------------- small builders -------------------------- */
-function statCard(value, label, mono) {
-  return (
-    '<div class="glass stat-card">' +
-      '<span class="stat-value' + (mono ? " mono" : "") + '">' + escapeHtml(value) + "</span>" +
-      '<span class="stat-label">' + escapeHtml(label) + "</span>" +
-    "</div>"
-  );
-}
-
-function scriptRow(s) {
-  return (
-    '<div class="script-row">' +
-      '<span class="' + (s.status === "online" ? "live-dot" : "paused-dot") + '"></span>' +
-      '<div class="script-info">' +
-        '<span class="script-name">' + escapeHtml(s.name) + "</span>" +
-        '<span class="script-meta">' + s.executions + " executions · " + s.hwid + " HWID bound</span>" +
-      "</div>" +
-      statusPill(s.status) +
-    "</div>"
-  );
-}
-
-function kv(k, v) {
-  return (
-    '<li><span class="kv-k">' + escapeHtml(k) + "</span>" +
-    '<span class="kv-v mono">' + escapeHtml(v) + "</span></li>"
-  );
-}
-
-function emptyState(title, sub, goto, btn) {
-  return (
-    '<div class="empty">' +
-      '<div class="empty-ico">∅</div>' +
-      "<h3>" + escapeHtml(title) + "</h3>" +
-      '<p class="muted">' + escapeHtml(sub) + "</p>" +
-      (goto ? '<button class="btn btn-ghost btn-sm" type="button" data-goto="' + escAttr(goto) + '">' + escapeHtml(btn) + "</button>" : "") +
-    "</div>"
-  );
-}
-
-/* ----------------------------- render ---------------------------------- */
-async function renderView() {
-  const root = document.getElementById("dashboard-root");
-  if (!root || !SESSION) return;
-
-  root.innerHTML = '<div class="loading">Loading your data…</div>';
-
-  let d;
+  let body = null;
   try {
-    d = await getUserData(SESSION);
-  } catch (e) {
-    console.warn("Dashboard: failed to load data:", e);
-    d = localData(SESSION);
-    toast("Couldn't reach the API — showing empty state");
+    body = await res.json();
+  } catch {
+    body = null;
   }
 
+  if (!res.ok) {
+    const message = body && body.message ? body.message : 'Request failed (' + res.status + ')';
+    const error = new Error(message);
+    error.status = res.status;
+    error.body = body;
+    throw error;
+  }
+
+  return body;
+}
+
+function demoOverview(session) {
+  return {
+    status: 'ok',
+    user: session.user,
+    system: {
+      botConnected: true,
+      botTag: 'VMaxForwarder#0001',
+      activeRules: 3,
+      totalRules: 4,
+      filesForwarded: 1824,
+      failedTransfers: 17,
+      duplicatesBlocked: 63,
+      oversizedBlocked: 9,
+      lastActivityAt: new Date().toISOString(),
+      lastError: { message: 'Sample: oversized archive rejected by rule size limit.' },
+    },
+    rules: [
+      {
+        id: 'fwd_demo_1',
+        sourceGuildId: '111111111111111111',
+        sourceGuildName: 'Artists Hub',
+        sourceChannelId: '222222222222222222',
+        sourceChannelName: 'uploads',
+        destinationType: 'webhook',
+        destWebhookRedacted: 'webhook:9999/abcd…wxyz',
+        enabled: true,
+        allowedFileTypes: ['png', 'jpg', 'gif', 'webp', 'mp4'],
+        maxFileSizeBytes: 8388608,
+        forwardText: true,
+        forwardEmbeds: false,
+        showAuthor: true,
+        stats: {
+          forwardedCount: 1140,
+          imageCount: 937,
+          videoCount: 203,
+          documentCount: 0,
+          archiveCount: 0,
+          textCount: 0,
+          otherCount: 0,
+          failedCount: 8,
+          duplicateCount: 21,
+          oversizedCount: 3,
+          lastForwardedAt: new Date().toISOString(),
+          lastFailedAt: new Date(Date.now() - 3600 * 1000).toISOString(),
+        },
+      },
+      {
+        id: 'fwd_demo_2',
+        sourceGuildId: '111111111111111111',
+        sourceGuildName: 'Artists Hub',
+        sourceChannelId: '333333333333333333',
+        sourceChannelName: 'deliveries',
+        destinationType: 'channel',
+        destinationChannelId: '444444444444444444',
+        destinationGuildId: '111111111111111111',
+        destinationGuildName: 'Artists Hub',
+        destinationChannelName: 'archive',
+        enabled: true,
+        allowedFileTypes: ['pdf', 'zip', 'txt', 'json'],
+        maxFileSizeBytes: 12582912,
+        forwardText: true,
+        forwardEmbeds: true,
+        showAuthor: false,
+        stats: {
+          forwardedCount: 562,
+          imageCount: 0,
+          videoCount: 0,
+          documentCount: 334,
+          archiveCount: 112,
+          textCount: 41,
+          otherCount: 0,
+          failedCount: 5,
+          duplicateCount: 32,
+          oversizedCount: 4,
+          lastForwardedAt: new Date(Date.now() - 2 * 3600 * 1000).toISOString(),
+          lastFailedAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
+        },
+      },
+    ],
+    recentHistory: [
+      {
+        updatedAt: new Date().toISOString(),
+        status: 'forwarded',
+        attachmentName: 'concept-sheet.png',
+        sizeLabel: '2.4 MB',
+        category: 'image',
+        authorName: 'Demo Artist',
+        sourceChannelName: 'uploads',
+        destination: 'webhook:9999/abcd…wxyz',
+      },
+      {
+        updatedAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+        status: 'oversized',
+        attachmentName: 'release-build.zip',
+        sizeLabel: '17.8 MB',
+        category: 'archive',
+        authorName: 'Build Bot',
+        sourceChannelName: 'deliveries',
+        destination: 'archive',
+        reason: 'File exceeds the 12.00 MB rule limit.',
+      },
+    ],
+    recentLogs: [
+      {
+        level: 'info',
+        createdAt: new Date().toISOString(),
+        message: 'Forwarded concept-sheet.png from uploads → webhook:9999/abcd…wxyz',
+      },
+      {
+        level: 'warn',
+        createdAt: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+        message: 'Blocked oversized release-build.zip (17.8 MB) for rule fwd_demo_2',
+      },
+    ],
+  };
+}
+
+async function loadOverview() {
+  if (STATE.session && STATE.session.demo) {
+    STATE.data = demoOverview(STATE.session);
+    return;
+  }
+  STATE.data = await api('/api/forwarder/overview');
+}
+
+function card(value, label, sub) {
+  return (
+    '<article class="glass stat-card">' +
+      '<div class="stat-value">' + escapeHtml(value) + '</div>' +
+      '<div class="stat-label">' + escapeHtml(label) + '</div>' +
+      (sub ? '<div class="stat-sub">' + escapeHtml(sub) + '</div>' : '') +
+    '</article>'
+  );
+}
+
+function systemCards(system) {
+  return (
+    '<div class="stats-grid">' +
+      card(fmtNumber(system.filesForwarded), 'Files forwarded', system.botConnected ? 'Bot online' : 'Bot offline') +
+      card(fmtNumber(system.activeRules), 'Active rules', fmtNumber(system.totalRules) + ' total configured') +
+      card(fmtNumber(system.failedTransfers), 'Failed transfers', fmtNumber(system.duplicatesBlocked) + ' duplicates blocked') +
+      card(fmtNumber(system.oversizedBlocked), 'Oversized blocks', system.lastActivityAt ? 'Last activity ' + fmtDate(system.lastActivityAt) : 'No activity yet') +
+    '</div>'
+  );
+}
+
+function ruleDestination(rule) {
+  return rule.destinationType === 'webhook'
+    ? (rule.destWebhookRedacted || 'webhook')
+    : (rule.destinationChannelName || rule.destinationChannelId || 'channel');
+}
+
+function ruleRow(rule) {
+  return (
+    '<tr>' +
+      '<td><div class="table-title">' + escapeHtml(rule.sourceChannelName || rule.sourceChannelId) + '</div><div class="table-sub">' + escapeHtml(rule.sourceGuildName || rule.sourceGuildId || '') + '</div></td>' +
+      '<td>' + escapeHtml(ruleDestination(rule)) + '</td>' +
+      '<td><span class="badge ' + (rule.enabled ? 'badge-on' : 'badge-off') + '">' + (rule.enabled ? 'Enabled' : 'Disabled') + '</span></td>' +
+      '<td>' + escapeHtml((rule.allowedFileTypes || []).join(', ')) + '</td>' +
+      '<td>' + escapeHtml(fmtBytes(rule.maxFileSizeBytes)) + '</td>' +
+      '<td>' + escapeHtml(fmtNumber(rule.stats && rule.stats.forwardedCount)) + '</td>' +
+      '<td class="actions-cell">' +
+        '<button class="btn btn-ghost btn-sm" data-action="test" data-rule-id="' + escapeHtml(rule.id) + '">Test</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="toggle" data-enabled="' + (rule.enabled ? '1' : '0') + '" data-rule-id="' + escapeHtml(rule.id) + '">' + (rule.enabled ? 'Disable' : 'Enable') + '</button>' +
+        '<button class="btn btn-ghost btn-sm danger" data-action="delete" data-rule-id="' + escapeHtml(rule.id) + '">Delete</button>' +
+      '</td>' +
+    '</tr>'
+  );
+}
+
+function historyRow(entry) {
+  return (
+    '<tr>' +
+      '<td>' + escapeHtml(fmtDate(entry.updatedAt)) + '</td>' +
+      '<td><span class="badge badge-' + escapeHtml(entry.status || 'info') + '">' + escapeHtml(entry.status || 'unknown') + '</span></td>' +
+      '<td>' + escapeHtml(entry.attachmentName || 'message payload') + '</td>' +
+      '<td>' + escapeHtml(entry.category || 'other') + '</td>' +
+      '<td>' + escapeHtml(entry.sizeLabel || '—') + '</td>' +
+      '<td>' + escapeHtml(entry.sourceChannelName || entry.sourceChannelId || '—') + '</td>' +
+      '<td>' + escapeHtml(entry.destination || '—') + '</td>' +
+    '</tr>'
+  );
+}
+
+function logRow(entry) {
+  return (
+    '<div class="log-item log-' + escapeHtml(entry.level || 'info') + '">' +
+      '<div class="log-meta">' + escapeHtml(fmtDate(entry.createdAt)) + ' · ' + escapeHtml((entry.level || 'info').toUpperCase()) + '</div>' +
+      '<div class="log-message">' + escapeHtml(entry.message || '') + '</div>' +
+    '</div>'
+  );
+}
+
+function overviewView(data) {
+  const system = data.system || {};
+  const rules = Array.isArray(data.rules) ? data.rules : [];
+  const lastError = system.lastError && system.lastError.message ? system.lastError.message : 'No recent delivery errors.';
+
+  return (
+    '<section class="view">' +
+      '<div class="view-head"><h1 class="view-title">VMax Forwarder Dashboard</h1><p class="view-sub">Monitor delivery health, review recent activity, and manage your forwarding pipeline in one place.</p></div>' +
+      systemCards(system) +
+      '<div class="grid-2 gap-lg">' +
+        '<section class="glass panel">' +
+          '<div class="panel-head"><h2>System status</h2><span class="badge ' + (system.botConnected ? 'badge-on' : 'badge-error') + '">' + (system.botConnected ? 'Connected' : 'Offline') + '</span></div>' +
+          '<ul class="detail-list">' +
+            '<li><span>Discord bot</span><strong>' + escapeHtml(system.botTag || 'Not connected') + '</strong></li>' +
+            '<li><span>Images forwarded</span><strong>' + escapeHtml(fmtNumber(rules.reduce((sum, rule) => sum + Number((rule.stats && rule.stats.imageCount) || 0), 0))) + '</strong></li>' +
+            '<li><span>Videos forwarded</span><strong>' + escapeHtml(fmtNumber(rules.reduce((sum, rule) => sum + Number((rule.stats && rule.stats.videoCount) || 0), 0))) + '</strong></li>' +
+            '<li><span>Documents forwarded</span><strong>' + escapeHtml(fmtNumber(rules.reduce((sum, rule) => sum + Number((rule.stats && rule.stats.documentCount) || 0), 0))) + '</strong></li>' +
+          '</ul>' +
+        '</section>' +
+        '<section class="glass panel">' +
+          '<div class="panel-head"><h2>Attention</h2><span class="badge badge-warn">Protected</span></div>' +
+          '<p class="muted">Webhook URLs are redacted in the dashboard and never echoed back from the API. Store your bot token, OAuth secret, and optional forwarder secret in environment variables.</p>' +
+          '<div class="notice-block">' + escapeHtml(lastError) + '</div>' +
+        '</section>' +
+      '</div>' +
+      '<section class="glass panel mt-lg">' +
+        '<div class="panel-head"><h2>Recent rules</h2><button class="btn btn-ghost btn-sm" data-goto="rules">Open rules</button></div>' +
+        (rules.length
+          ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Source</th><th>Destination</th><th>Status</th><th>Types</th><th>Max size</th><th>Forwarded</th><th></th></tr></thead><tbody>' + rules.slice(0, 5).map(ruleRow).join('') + '</tbody></table></div>'
+          : '<div class="empty-state"><h3>No rules configured</h3><p>Create your first forwarding rule to start monitoring and relaying attachments.</p><button class="btn btn-primary btn-sm" data-goto="rules">Create rule</button></div>') +
+      '</section>' +
+    '</section>'
+  );
+}
+
+function rulesView(data) {
+  const rules = Array.isArray(data.rules) ? data.rules : [];
+  return (
+    '<section class="view">' +
+      '<div class="view-head"><h1 class="view-title">Forwarding rules</h1><p class="view-sub">Create channel-to-webhook or channel-to-channel routes with file filters, size limits, and author display controls.</p></div>' +
+      '<div class="grid-2 gap-lg align-start">' +
+        '<section class="glass panel">' +
+          '<div class="panel-head"><h2>Create rule</h2><span class="badge badge-on">Secure</span></div>' +
+          '<form id="rule-form" class="form-grid">' +
+            '<label><span>Source server ID</span><input name="sourceGuildId" required placeholder="123456789012345678" /></label>' +
+            '<label><span>Source server name</span><input name="sourceGuildName" placeholder="Optional label" /></label>' +
+            '<label><span>Source channel ID</span><input name="sourceChannelId" required placeholder="123456789012345678" /></label>' +
+            '<label><span>Source channel name</span><input name="sourceChannelName" placeholder="Optional label" /></label>' +
+            '<label class="full"><span>Destination webhook URL</span><input name="destinationWebhook" placeholder="https://discord.com/api/webhooks/..." /></label>' +
+            '<label class="full"><span>Destination channel ID</span><input name="destinationChannelId" placeholder="Optional if bot can post there directly" /></label>' +
+            '<label class="full"><span>Allowed file types</span><input name="allowedFileTypes" value="all" placeholder="all or png,jpg,pdf,zip" /></label>' +
+            '<label><span>Maximum file size (MB)</span><input name="maxFileSizeMb" type="number" min="1" max="100" value="8" /></label>' +
+            '<label class="toggle"><input name="forwardText" type="checkbox" checked /><span>Forward text/captions</span></label>' +
+            '<label class="toggle"><input name="forwardEmbeds" type="checkbox" /><span>Forward embeds</span></label>' +
+            '<label class="toggle"><input name="showAuthor" type="checkbox" checked /><span>Show author information</span></label>' +
+            '<label class="toggle"><input name="enabled" type="checkbox" checked /><span>Enable immediately</span></label>' +
+            '<div class="full form-actions"><button class="btn btn-primary" type="submit">Create forwarding rule</button></div>' +
+          '</form>' +
+        '</section>' +
+        '<section class="glass panel">' +
+          '<div class="panel-head"><h2>Rule notes</h2><span class="badge badge-warn">Official API only</span></div>' +
+          '<ul class="bullet-list">' +
+            '<li>Use a destination webhook for servers where the bot is not installed.</li>' +
+            '<li>Direct destination channel IDs only work when the bot can already post there.</li>' +
+            '<li>Webhook URLs are redacted in the dashboard after saving.</li>' +
+            '<li>Duplicate attachment deliveries are blocked using persistent message/attachment history.</li>' +
+            '<li>Oversized files are logged instead of crashing the worker.</li>' +
+          '</ul>' +
+        '</section>' +
+      '</div>' +
+      '<section class="glass panel mt-lg">' +
+        '<div class="panel-head"><h2>Configured rules</h2><span class="badge badge-neutral">' + escapeHtml(String(rules.length)) + '</span></div>' +
+        (rules.length
+          ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Source</th><th>Destination</th><th>Status</th><th>Types</th><th>Max size</th><th>Forwarded</th><th></th></tr></thead><tbody>' + rules.map(ruleRow).join('') + '</tbody></table></div>'
+          : '<div class="empty-state"><h3>No forwarding rules yet</h3><p>Fill out the form above to create your first rule.</p></div>') +
+      '</section>' +
+    '</section>'
+  );
+}
+
+function activityView(data) {
+  const history = Array.isArray(data.recentHistory) ? data.recentHistory : [];
+  const logs = Array.isArray(data.recentLogs) ? data.recentLogs : [];
+  return (
+    '<section class="view">' +
+      '<div class="view-head"><h1 class="view-title">Activity & logs</h1><p class="view-sub">Review forwarded files, blocked duplicates, webhook errors, permission problems, and configuration changes.</p></div>' +
+      '<div class="grid-2 gap-lg align-start">' +
+        '<section class="glass panel">' +
+          '<div class="panel-head"><h2>Forward history</h2><span class="badge badge-neutral">' + escapeHtml(String(history.length)) + '</span></div>' +
+          (history.length
+            ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>Time</th><th>Status</th><th>Attachment</th><th>Type</th><th>Size</th><th>Source</th><th>Destination</th></tr></thead><tbody>' + history.map(historyRow).join('') + '</tbody></table></div>'
+            : '<div class="empty-state"><h3>No history yet</h3><p>Forwarded events will appear here after the first delivery.</p></div>') +
+        '</section>' +
+        '<section class="glass panel">' +
+          '<div class="panel-head"><h2>Recent logs</h2><button class="btn btn-ghost btn-sm" id="load-logs" type="button">Reload</button></div>' +
+          (logs.length
+            ? '<div class="log-list">' + logs.map(logRow).join('') + '</div>'
+            : '<div class="empty-state"><h3>No logs yet</h3><p>Operational events will appear here as rules are used.</p></div>') +
+        '</section>' +
+      '</div>' +
+    '</section>'
+  );
+}
+
+function settingsView(data) {
+  const user = data.user || (STATE.session && STATE.session.user) || {};
+  const system = data.system || {};
+  return (
+    '<section class="view">' +
+      '<div class="view-head"><h1 class="view-title">Dashboard settings</h1><p class="view-sub">Dashboard access is limited to the bot owner or explicitly configured forwarder managers.</p></div>' +
+      '<div class="grid-2 gap-lg align-start">' +
+        '<section class="glass panel">' +
+          '<div class="panel-head"><h2>Signed-in account</h2><span class="badge badge-on">Authenticated</span></div>' +
+          '<ul class="detail-list">' +
+            '<li><span>Name</span><strong>' + escapeHtml(user.global_name || user.username || 'Unknown user') + '</strong></li>' +
+            '<li><span>Username</span><strong>@' + escapeHtml(user.username || 'unknown') + '</strong></li>' +
+            '<li><span>User ID</span><strong class="mono">' + escapeHtml(user.id || '—') + '</strong></li>' +
+            '<li><span>Bot status</span><strong>' + escapeHtml(system.botTag || 'offline') + '</strong></li>' +
+          '</ul>' +
+        '</section>' +
+        '<section class="glass panel">' +
+          '<div class="panel-head"><h2>Security checklist</h2><span class="badge badge-neutral">Production</span></div>' +
+          '<ul class="bullet-list">' +
+            '<li>Keep DISCORD_TOKEN and DISCORD_CLIENT_SECRET in environment variables only.</li>' +
+            '<li>Set FORWARDER_SECRET_KEY to encrypt saved webhook URLs at rest.</li>' +
+            '<li>Limit dashboard access with OWNER_IDS or FORWARDER_DASHBOARD_USER_IDS.</li>' +
+            '<li>Use destination webhooks only when the destination admin intentionally created them.</li>' +
+            '<li>Never attempt to bypass Discord server permissions or automate user accounts.</li>' +
+          '</ul>' +
+          '<div class="form-actions"><button class="btn btn-ghost" id="settings-logout" type="button">Log out</button></div>' +
+        '</section>' +
+      '</div>' +
+    '</section>'
+  );
+}
+
+function gate(title, text, buttonText) {
+  return (
+    '<section class="gate reveal is-visible">' +
+      '<div class="glass gate-card">' +
+        '<h1>' + escapeHtml(title) + '</h1>' +
+        '<p class="gate-note">' + escapeHtml(text) + '</p>' +
+        '<div class="gate-actions">' +
+          '<button class="btn btn-primary btn-lg" id="gate-login" type="button">' + escapeHtml(buttonText || 'Log in with Discord') + '</button>' +
+          (PV && PV.CONFIG && PV.CONFIG.DEMO_ENABLED ? '<a class="btn btn-ghost btn-lg" href="dashboard.html?demo=1">Open demo dashboard</a>' : '') +
+        '</div>' +
+      '</div>' +
+    '</section>'
+  );
+}
+
+function forbiddenScreen(message) {
+  return (
+    '<section class="gate reveal is-visible">' +
+      '<div class="glass gate-card">' +
+        '<h1>Access denied</h1>' +
+        '<p class="gate-note">' + escapeHtml(message) + '</p>' +
+        '<div class="gate-actions">' +
+          '<a class="btn btn-ghost btn-lg" href="/">Return home</a>' +
+          '<button class="btn btn-primary btn-lg" id="settings-logout" type="button">Log out</button>' +
+        '</div>' +
+      '</div>' +
+    '</section>'
+  );
+}
+
+function render() {
+  const root = document.getElementById('dashboard-root');
+  if (!root) return;
+  if (!STATE.data) {
+    root.innerHTML = '<div class="loading">Loading VMax Forwarder Dashboard…</div>';
+    return;
+  }
+
+  const view = STATE.view;
   const html = {
-    dashboard: viewDashboard,
-    scripts: viewScripts,
-    keys: viewKeys,
-    bot: viewBot,
-    settings: viewSettings,
-  }[VIEW](d);
+    overview: overviewView,
+    rules: rulesView,
+    activity: activityView,
+    settings: settingsView,
+  }[view](STATE.data);
 
   root.innerHTML = html;
-
-  // active nav + title
-  document.querySelectorAll(".side-link").forEach(function (b) {
-    b.classList.toggle("active", b.getAttribute("data-view") === VIEW);
+  document.getElementById('topbar-title').textContent = TITLES[view] || 'Overview';
+  document.querySelectorAll('.side-link').forEach((button) => {
+    button.classList.toggle('active', button.getAttribute('data-view') === view);
   });
-  const title = document.getElementById("topbar-title");
-  if (title) title.textContent = VIEW_TITLES[VIEW] || "Dashboard";
 
-  bindCommon(root);
+  bindViewActions(root);
 }
 
-/* Events that apply to every view. */
-function bindCommon(root) {
-  root.querySelectorAll("[data-copy]").forEach(function (btn) {
-    btn.addEventListener("click", function () {
-      copyText(btn.getAttribute("data-copy"));
-      toast("Copied to clipboard");
-    });
+function setView(view) {
+  STATE.view = TITLES[view] ? view : 'overview';
+  render();
+  const sidebar = document.getElementById('sidebar');
+  const toggle = document.getElementById('sidebar-toggle');
+  if (sidebar) sidebar.classList.remove('open');
+  if (toggle) toggle.setAttribute('aria-expanded', 'false');
+}
+
+async function refreshData(showToastMessage) {
+  const root = document.getElementById('dashboard-root');
+  if (root) root.innerHTML = '<div class="loading">Refreshing dashboard data…</div>';
+  await loadOverview();
+  render();
+  if (showToastMessage) toast('Dashboard refreshed');
+}
+
+async function submitRuleForm(form) {
+  const fd = new FormData(form);
+  const payload = {
+    sourceGuildId: String(fd.get('sourceGuildId') || '').trim(),
+    sourceGuildName: String(fd.get('sourceGuildName') || '').trim(),
+    sourceChannelId: String(fd.get('sourceChannelId') || '').trim(),
+    sourceChannelName: String(fd.get('sourceChannelName') || '').trim(),
+    destinationWebhook: String(fd.get('destinationWebhook') || '').trim(),
+    destinationChannelId: String(fd.get('destinationChannelId') || '').trim(),
+    allowedFileTypes: String(fd.get('allowedFileTypes') || 'all').trim(),
+    maxFileSizeBytes: Number(fd.get('maxFileSizeMb') || 8) * 1024 * 1024,
+    forwardText: fd.get('forwardText') === 'on',
+    forwardEmbeds: fd.get('forwardEmbeds') === 'on',
+    showAuthor: fd.get('showAuthor') === 'on',
+    enabled: fd.get('enabled') === 'on',
+  };
+
+  await api('/api/forwarder/rules', {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 
-  root.querySelectorAll("[data-goto]").forEach(function (btn) {
-    btn.addEventListener("click", function () { showView(btn.getAttribute("data-goto")); });
+  form.reset();
+  form.elements.allowedFileTypes.value = 'all';
+  form.elements.maxFileSizeMb.value = '8';
+  form.elements.forwardText.checked = true;
+  form.elements.forwardEmbeds.checked = false;
+  form.elements.showAuthor.checked = true;
+  form.elements.enabled.checked = true;
+  await refreshData(false);
+  setView('rules');
+  toast('Forwarding rule created');
+}
+
+async function handleRuleAction(action, ruleId, enabled) {
+  if (action === 'delete' && !window.confirm('Delete this forwarding rule?')) return;
+  const endpoint = '/api/forwarder/rules/' + encodeURIComponent(ruleId) + '/' + action;
+  await api(endpoint, { method: 'POST', body: '{}' });
+  await refreshData(false);
+  if (action === 'delete') toast('Rule deleted');
+  if (action === 'test') toast('Test payload sent');
+  if (action === 'enable' || action === 'disable') toast('Rule updated');
+  if (action === 'toggle') toast(enabled ? 'Rule disabled' : 'Rule enabled');
+}
+
+function bindViewActions(root) {
+  root.querySelectorAll('[data-goto]').forEach((button) => {
+    button.addEventListener('click', () => setView(button.getAttribute('data-goto')));
   });
 
-  const regen = document.getElementById("regen-key");
-  if (regen) {
-    regen.addEventListener("click", function () {
-      toast("Regenerate is wired to your API");
+  const form = document.getElementById('rule-form');
+  if (form) {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      try {
+        await submitRuleForm(form);
+      } catch (error) {
+        toast(error.message || 'Failed to create rule');
+      }
     });
   }
 
-  const setLogout = document.getElementById("settings-logout");
-  if (setLogout) {
-    setLogout.addEventListener("click", function (e) {
-      e.preventDefault();
+  root.querySelectorAll('[data-action]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const rawAction = button.getAttribute('data-action');
+      const ruleId = button.getAttribute('data-rule-id');
+      const enabled = button.getAttribute('data-enabled') === '1';
+      const action = rawAction === 'toggle' ? (enabled ? 'disable' : 'enable') : rawAction;
+      button.disabled = true;
+      try {
+        await handleRuleAction(action, ruleId, enabled);
+      } catch (error) {
+        toast(error.message || 'Action failed');
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
+  const loadLogs = document.getElementById('load-logs');
+  if (loadLogs) {
+    loadLogs.addEventListener('click', async () => {
+      try {
+        const data = await api('/api/forwarder/logs');
+        STATE.data.recentLogs = data.logs || [];
+        STATE.data.recentHistory = data.history || [];
+        render();
+        toast('Logs reloaded');
+      } catch (error) {
+        toast(error.message || 'Failed to load logs');
+      }
+    });
+  }
+
+  const settingsLogout = document.getElementById('settings-logout');
+  if (settingsLogout) {
+    settingsLogout.addEventListener('click', () => {
       PV.logout();
-      location.href = "index.html";
+      location.href = '/';
     });
   }
 }
 
-function showView(name) {
-  if (!VIEW_TITLES[name]) name = "dashboard";
-  VIEW = name;
-  renderView();
-  // close mobile drawer after navigating
-  const sb = document.getElementById("sidebar");
-  const tg = document.getElementById("sidebar-toggle");
-  if (sb) sb.classList.remove("open");
-  if (tg) tg.setAttribute("aria-expanded", "false");
-  window.scrollTo(0, 0);
-}
-
-/* ----------------------------- screens --------------------------------- */
-function loginGate() {
-  return (
-    '<section class="gate reveal is-visible">' +
-      '<div class="glass gate-card">' +
-        '<span class="brand-logo gate-logo" aria-hidden="true">' +
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-            '<path d="M12 3l7 3v5c0 4.6-3 8.2-7 10-4-1.8-7-5.4-7-10V6l7-3z" /><path d="M9 12l2 2 4-4" />' +
-          "</svg>" +
-        "</span>" +
-        '<h1>Welcome to your <span class="gradient-text">dashboard</span></h1>' +
-        "<p>Sign in with Discord to get your API key and host your scripts.</p>" +
-        '<p class="gate-note">Authorize Protect-Vmax with your Discord account to continue.</p>' +
-        '<div class="gate-actions">' +
-          '<button class="btn btn-primary btn-lg" id="gate-login" type="button">Log in with Discord</button>' +
-          (PV.CONFIG.DEMO_ENABLED ? '<a class="btn btn-ghost btn-lg" href="dashboard.html?demo=1">View demo dashboard</a>' : "") +
-        "</div>" +
-      "</div>" +
-    "</section>"
-  );
-}
-
-function errorScreen(message) {
-  return (
-    '<section class="gate reveal is-visible">' +
-      '<div class="glass gate-card">' +
-        "<h1>Something went wrong</h1>" +
-        '<p class="gate-note">' + escapeHtml(message) + "</p>" +
-        '<div class="gate-actions">' +
-          '<a class="btn btn-primary btn-lg" href="dashboard.html">Try again</a>' +
-          '<a class="btn btn-ghost btn-lg" href="index.html">Back to site</a>' +
-        "</div>" +
-      "</div>" +
-    "</section>"
-  );
-}
-
-/* ----------------------------- mobile menu ----------------------------- */
-function initSidebar() {
-  const toggle = document.getElementById("sidebar-toggle");
-  const sidebar = document.getElementById("sidebar");
+function initLayout() {
+  const sidebar = document.getElementById('sidebar');
+  const toggle = document.getElementById('sidebar-toggle');
   if (toggle && sidebar) {
-    toggle.addEventListener("click", function () {
-      const open = sidebar.classList.toggle("open");
-      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.addEventListener('click', () => {
+      const open = sidebar.classList.toggle('open');
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
     });
   }
-  document.querySelectorAll(".side-link").forEach(function (b) {
-    b.addEventListener("click", function () { showView(b.getAttribute("data-view")); });
+
+  document.querySelectorAll('.side-link').forEach((button) => {
+    button.addEventListener('click', () => setView(button.getAttribute('data-view')));
   });
+
+  const refresh = document.getElementById('refresh-dashboard');
+  if (refresh) {
+    refresh.addEventListener('click', async () => {
+      try {
+        await refreshData(true);
+      } catch (error) {
+        toast(error.message || 'Refresh failed');
+      }
+    });
+  }
 }
 
-/* ----------------------------- boot ------------------------------------ */
-async function bootDashboard() {
-  const root = document.getElementById("dashboard-root");
-  initSidebar();
+async function boot() {
+  initLayout();
 
   try {
     await PV.restoreSession();
-  } catch (e) {
-    root.innerHTML = errorScreen(e.message || "Login failed.");
+  } catch (error) {
+    document.getElementById('dashboard-root').innerHTML = forbiddenScreen(error.message || 'Could not restore your session.');
     return;
   }
 
   let session = PV.getSession();
-
   if (!PV.isLoggedIn()) {
     if (PV.isDemoRequested()) {
       session = PV.makeDemoSession();
-      PV.CONFIG && (session.demo = true);
-      localStorage.setItem("pv_session", JSON.stringify(session));
-      PV.initNavAuth(); // refresh the sidebar user card now
+      session.demo = true;
+      localStorage.setItem('pv_session', JSON.stringify(session));
     } else {
-      root.innerHTML = loginGate();
-      const gate = document.getElementById("gate-login");
-      if (gate) gate.addEventListener("click", function () { PV.login(); });
+      document.getElementById('dashboard-root').innerHTML = gate(
+        'Log in to VMax Forwarder Dashboard',
+        'Sign in with Discord to manage forwarding rules, delivery history, webhooks, and operational status.',
+        'Log in with Discord',
+      );
+      const gateLogin = document.getElementById('gate-login');
+      if (gateLogin) gateLogin.addEventListener('click', () => PV.login());
       return;
     }
   }
 
-  SESSION = session;
-  renderView();
+  STATE.session = session;
+  const sidePlan = document.getElementById('side-plan');
+  if (sidePlan) sidePlan.textContent = session.demo ? 'Demo workspace' : 'Dashboard manager';
+
+  try {
+    await refreshData(false);
+  } catch (error) {
+    if (error.status === 403) {
+      document.getElementById('dashboard-root').innerHTML = forbiddenScreen(error.message || 'Your account is not allowed to manage this dashboard.');
+      const logout = document.getElementById('settings-logout');
+      if (logout) logout.addEventListener('click', () => {
+        PV.logout();
+        location.href = '/';
+      });
+      return;
+    }
+    document.getElementById('dashboard-root').innerHTML = forbiddenScreen(error.message || 'Dashboard failed to load.');
+    return;
+  }
 }
 
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", bootDashboard);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', boot);
 } else {
-  bootDashboard();
+  boot();
 }

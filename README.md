@@ -1,8 +1,41 @@
 # Discord Project
 
-A Discord bot built with [discord.js](https://discord.js.org/) v14, with a complete **script key / whitelist system** (like Luarmor/Polsec-style bots), slash commands, interactive panels, script protection, analytics, web landing page, and a validation API for your scripts.
+A Discord bot built with [discord.js](https://discord.js.org/) v14. This repository now includes a production-oriented **Discord attachment forwarding system** that can relay images, videos, documents, and other safe files from monitored source channels into either:
 
-🌐 **Made by Zwoz** — Protect-Vmax
+- a **destination Discord webhook** (for servers where the bot is *not* installed), or
+- a **destination channel ID** the bot can already access directly.
+
+It also still contains the older Protect-Vmax key-system modules already present in the project.
+
+🌐 **Made by Zwoz** — now extended with **VMax Forwarder Dashboard**
+
+## VMax Forwarder highlights
+
+- **Source → bot → destination webhook/channel** forwarding flow
+- `/forward add`, `/forward remove`, `/forward list`, `/forward enable`, `/forward disable`, `/forward test`, `/forward status`
+- Multiple forwarding rules at the same time
+- Per-rule controls for:
+  - source server/channel
+  - destination webhook URL or destination channel ID
+  - enabled/disabled status
+  - allowed file types
+  - maximum file size
+  - forward text captions on/off
+  - forward embeds on/off
+  - show original author info on/off
+- Duplicate protection with a persistent processed-message / processed-attachment history
+- Safe attachment handling with type checks, size checks, timeout-protected downloads, and graceful oversize failures
+- Redacted webhook display in commands, logs, and dashboard responses
+- Detailed forward history + operational logs persisted in `data/`
+- **VMax Forwarder Dashboard** with Discord login, stats cards, rule creation, activity history, error logs, enable/disable, delete, and test-send actions
+
+## Important Discord limitation
+
+This system is intentionally designed around the official Discord rules:
+
+- The bot can only read source channels in servers where it has been invited and granted access.
+- For a destination server where the bot is not installed, the destination administrator must intentionally create and provide a **Discord webhook URL**.
+- This project does **not** use self-bots, user-account automation, permission bypassing, scraping, or any attempt to access private channels without authorization.
 
 ## Features
 
@@ -16,7 +49,7 @@ A Discord bot built with [discord.js](https://discord.js.org/) v14, with a compl
 - ✨ **Short feature menu** — `/features` shows all main bot features in one compact list
 - 🧬 **Lua deobfuscator** — `/deobf` auto-detects Luraph, IronBrew2, MoonSec V2/V3, WeAreDevs, Prometheus, AztupBrew (or pick one) then returns a cleaned `.lua` file
 - 🧪 **ENV logger** — `/envlog` gives an executor script that dumps `getsenv` functions/values/upvalues
-- 📨 **File/photo forwarding** — members run `/forward setup to_me: True` (files DM to you, no webhook). Admins can use a dest channel ID only if the bot is already in that server
+- 📨 **Discord attachment forwarding** — admins create source → destination rules using webhooks or bot-accessible channel IDs, with duplicate blocking, size limits, logging, and dashboard management
 - 🧾 **One-line loaders** — buyers paste `loadstring(game:HttpGet("https://your-host/s/<token>.lua"))()`
 - 🧹 **Message cleanup** — `/clear amount:` lets members with Manage Messages remove up to 100 recent messages
 - 🏷️ **Auto buyer roles** — `/setbuyerrole` assigns a role automatically when users redeem; whitelist whole roles with `/whitelist role:`
@@ -51,7 +84,7 @@ src/
     ├── protect.js        # Wraps scripts with the runtime whitelist check
     ├── loader.js         # One-line loadstring(game:HttpGet("/s/token.lua"))()
     ├── deobfuscator.js   # Obfuscator detect + Luraph/IB2/MoonSec/WRD passes
-    ├── forward.js        # Cross-server file/photo forwarding (channel ID or webhook)
+    ├── forward.js        # VMax attachment forwarding engine, rule store, logging & dedupe
     ├── analytics.js      # Validation run analytics
     ├── roles.js          # Auto buyer role assignment
     ├── api.js            # HTTP validation/load/status API & Web static server
@@ -107,8 +140,11 @@ public/                   # Web landing page assets
 /deobf file: obfuscated.lua                    # auto-detect obfuscator, then deobf
 /deobf file: obfuscated.lua obfuscator: luraph # force a specific pipeline
 /envlog                                        # get the ENV-Logger dump script
-/forward setup to_me: True                     # member: DM every file/photo to you
-/forward setup dest: 123456789012345678        # admin: dest channel the bot can already see
+/forward add source_channel: #uploads destination_webhook: https://discord.com/api/webhooks/... allowed_types: png,jpg,gif,mp4 max_size_mb: 8
+/forward add source_channel: #docs destination_channel_id: 123456789012345678 allowed_types: pdf,zip,txt,json
+/forward list
+/forward test id: fwd_xxxxxxxx
+/forward status
 
 # Ticket setup (choose these from Discord's slash-command option menus):
 /ticketsetup category: Tickets support_role: @Support log_channel: #ticket-logs panel_channel: #open-a-ticket

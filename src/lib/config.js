@@ -5,6 +5,12 @@ function positiveNumber(value, fallback) {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
+function boundedInteger(value, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
+
 function idList(value) {
   return String(value || '')
     .split(',')
@@ -61,6 +67,15 @@ export const CONFIG = {
 
   // Optional footer link shown on panels/success embeds.
   supportUrl: (process.env.SUPPORT_URL || '').trim(),
+
+  // Discord attachment forwarding system.
+  forwarder: {
+    webhookMaxFileSizeBytes: boundedInteger(process.env.FORWARDER_WEBHOOK_MAX_MB, 8, { min: 1, max: 100 }) * 1024 * 1024,
+    downloadTimeoutMs: boundedInteger(process.env.FORWARDER_DOWNLOAD_TIMEOUT_MS, 20000, { min: 5000, max: 120000 }),
+    historyLimit: boundedInteger(process.env.FORWARDER_HISTORY_LIMIT, 10000, { min: 100, max: 50000 }),
+    logLimit: boundedInteger(process.env.FORWARDER_LOG_LIMIT, 2000, { min: 100, max: 10000 }),
+    dashboardManagerIds: idList(process.env.FORWARDER_DASHBOARD_USER_IDS),
+  },
 
   // Names of scripts may only contain these characters.
   scriptNamePattern: /^[a-z0-9 _-]{1,50}$/,
