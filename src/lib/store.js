@@ -20,6 +20,8 @@ const COLLECTIONS = [
   'buyerroles',
   'ticketconfigs',
   'tickets',
+  'loaders',
+  'forwards',
 ];
 
 const DEFAULT_VALUES = {

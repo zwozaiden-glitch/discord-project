@@ -23,7 +23,10 @@ export const FEATURES = [
   'Automatic Buyer roles',
   'Lua script uploads',
   'Runtime script protection',
-  'Secure loader delivery',
+  'One-line short loaders (/s/token.lua)',
+  'Obfuscator auto-detect + selectable deobf',
+  'ENV-Logger script dumps',
+  'Cross-server file/photo forwarding',
   'Usage analytics',
   'Web dashboard, API, and Discord OAuth',
 ];
@@ -31,11 +34,11 @@ export const FEATURES = [
 export default {
   data: new SlashCommandBuilder()
     .setName('features')
-    .setDescription('Shows a short list of all 25 main bot features.'),
+    .setDescription('Shows a short list of all main bot features.'),
 
   async execute(interaction) {
     const embed = {
-      title: '✨ Protect-Vmax — 25 Features',
+      title: `✨ Protect-Vmax — ${FEATURES.length} Features`,
       description: FEATURES.map((feature, index) => `**${index + 1}.** ${feature}`).join('\n'),
       color: 0x5865f2,
     };
