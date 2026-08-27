@@ -1,7 +1,10 @@
 // Cross-server file/photo forwarding.
-// Source: a channel the bot can see.
-// Dest: another channel ID (bot must share that server) OR a webhook URL
-// so files can be sent even when the bot is not in the destination server.
+//
+// Discord will not let a bot post into a channel it cannot see. Members also
+// cannot create webhooks. So dest is one of:
+//   - destUserId   → DM the member who set the rule (works with no dest admin)
+//   - destChannelId → a channel the bot is already in
+//   - destWebhook   → optional, only if someone already has a webhook URL
 import { db, save } from './store.js';
 import { randomBytes } from 'node:crypto';
 
@@ -22,17 +25,25 @@ export function isSnowflake(value) {
   return SNOWFLAKE_RE.test(String(value || '').trim());
 }
 
-export function listForwards(guildId = null) {
-  const all = Object.values(ensure());
-  if (!guildId) return all;
-  return all.filter((rule) => rule.guildId === String(guildId));
+export function listForwards(guildId = null, { userId = null, admin = false } = {}) {
+  let all = Object.values(ensure());
+  if (guildId) all = all.filter((rule) => rule.guildId === String(guildId));
+  if (!admin && userId) all = all.filter((rule) => rule.createdBy === String(userId));
+  return all;
 }
 
 export function getForward(id) {
   return ensure()[id] || null;
 }
 
-export function addForward({ guildId, sourceChannelId, destChannelId = null, destWebhook = null, createdBy }) {
+export function addForward({
+  guildId,
+  sourceChannelId,
+  destChannelId = null,
+  destWebhook = null,
+  destUserId = null,
+  createdBy,
+}) {
   const id = randomBytes(4).toString('hex');
   const rule = {
     id,
@@ -40,6 +51,7 @@ export function addForward({ guildId, sourceChannelId, destChannelId = null, des
     sourceChannelId: String(sourceChannelId),
     destChannelId: destChannelId ? String(destChannelId) : null,
     destWebhook: destWebhook ? String(destWebhook).trim() : null,
+    destUserId: destUserId ? String(destUserId) : null,
     createdBy: createdBy ? String(createdBy) : null,
     createdAt: new Date().toISOString(),
     forwarded: 0,
@@ -54,6 +66,13 @@ export function removeForward(id) {
   delete db.forwards[id];
   save('forwards');
   return true;
+}
+
+export function describeDest(rule) {
+  if (rule.destUserId) return `DMs of <@${rule.destUserId}>`;
+  if (rule.destWebhook) return 'webhook';
+  if (rule.destChannelId) return `<#${rule.destChannelId}> \`${rule.destChannelId}\``;
+  return 'unknown dest';
 }
 
 function captionFor(message) {
@@ -110,6 +129,16 @@ async function sendChannel(client, destChannelId, message, attachments) {
   return { ok: true };
 }
 
+async function sendDm(client, userId, message, attachments) {
+  const user = await client.users.fetch(userId).catch(() => null);
+  if (!user) return { ok: false, reason: 'user_missing' };
+  await user.send({
+    content: captionFor(message),
+    files: attachments.slice(0, 10).map((att) => ({ attachment: att.url, name: att.name || 'file' })),
+  });
+  return { ok: true };
+}
+
 export async function handleForwardedMessage(message) {
   if (!message || message.author?.bot) return;
   if (message.webhookId) return;
@@ -121,20 +150,19 @@ export async function handleForwardedMessage(message) {
 
   for (const rule of rules) {
     try {
-      if (rule.destWebhook) {
-        const ok = await sendWebhook(rule.destWebhook, message, attachments);
-        if (ok) {
-          rule.forwarded = (rule.forwarded || 0) + 1;
-          save('forwards');
-        }
-        continue;
-      }
-      if (rule.destChannelId) {
+      let ok = false;
+      if (rule.destUserId) {
+        const result = await sendDm(message.client, rule.destUserId, message, attachments);
+        ok = result.ok;
+      } else if (rule.destWebhook) {
+        ok = await sendWebhook(rule.destWebhook, message, attachments);
+      } else if (rule.destChannelId) {
         const result = await sendChannel(message.client, rule.destChannelId, message, attachments);
-        if (result.ok) {
-          rule.forwarded = (rule.forwarded || 0) + 1;
-          save('forwards');
-        }
+        ok = result.ok;
+      }
+      if (ok) {
+        rule.forwarded = (rule.forwarded || 0) + 1;
+        save('forwards');
       }
     } catch (error) {
       console.warn(`[forward] rule ${rule.id} failed:`, error.message);

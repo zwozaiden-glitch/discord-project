@@ -16,7 +16,7 @@ A Discord bot built with [discord.js](https://discord.js.org/) v14, with a compl
 - ✨ **Short feature menu** — `/features` shows all main bot features in one compact list
 - 🧬 **Lua deobfuscator** — `/deobf` auto-detects Luraph, IronBrew2, MoonSec V2/V3, WeAreDevs, Prometheus, AztupBrew (or pick one) then returns a cleaned `.lua` file
 - 🧪 **ENV logger** — `/envlog` gives an executor script that dumps `getsenv` functions/values/upvalues
-- 📨 **File/photo forwarding** — `/forward setup dest: CHANNEL_ID` copies files and images to another server; use `webhook:` if the bot is not in the destination
+- 📨 **File/photo forwarding** — members run `/forward setup to_me: True` (files DM to you, no webhook). Admins can use a dest channel ID only if the bot is already in that server
 - 🧾 **One-line loaders** — buyers paste `loadstring(game:HttpGet("https://your-host/s/<token>.lua"))()`
 - 🧹 **Message cleanup** — `/clear amount:` lets members with Manage Messages remove up to 100 recent messages
 - 🏷️ **Auto buyer roles** — `/setbuyerrole` assigns a role automatically when users redeem; whitelist whole roles with `/whitelist role:`
@@ -107,8 +107,8 @@ public/                   # Web landing page assets
 /deobf file: obfuscated.lua                    # auto-detect obfuscator, then deobf
 /deobf file: obfuscated.lua obfuscator: luraph # force a specific pipeline
 /envlog                                        # get the ENV-Logger dump script
-/forward setup dest: 123456789012345678        # forward files/photos to that channel ID
-/forward setup dest: 123 webhook: https://discord.com/api/webhooks/...   # dest without the bot
+/forward setup to_me: True                     # member: DM every file/photo to you
+/forward setup dest: 123456789012345678        # admin: dest channel the bot can already see
 
 # Ticket setup (choose these from Discord's slash-command option menus):
 /ticketsetup category: Tickets support_role: @Support log_channel: #ticket-logs panel_channel: #open-a-ticket

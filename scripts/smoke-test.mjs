@@ -270,10 +270,11 @@ assert.equal(isWebhookUrl('https://discord.com/api/webhooks/1/abc'), true);
 const fwd = addForward({
   guildId: 'guild-1',
   sourceChannelId: '111',
-  destChannelId: '222',
+  destUserId: 'user-1',
   createdBy: 'user-1',
 });
 assert.equal(listForwards('guild-1').length, 1);
+assert.equal(listForwards('guild-1', { userId: 'user-1' }).length, 1);
 assert.equal(removeForward(fwd.id), true);
 
 // skipHwid lets /load succeed without a device id

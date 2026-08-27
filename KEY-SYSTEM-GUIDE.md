@@ -37,7 +37,7 @@ Your bot now has a complete license-key system, like the Luarmor-style bots you'
 | `/scripts` | Everyone | Lists all scripts + whether you're whitelisted |
 | `/deobf file: [obfuscator] [detect_only]` | Everyone | Detect + deobfuscate a Lua file (Luraph, IronBrew, MoonSec, WeAreDevs, …) |
 | `/envlog` | Everyone | Download the ENV-Logger `getsenv` dump script |
-| `/forward setup dest: CHANNEL_ID [webhook] [source]` | Admin | Forward files/photos to another channel ID (webhook if bot isn't in dest) |
+| `/forward setup [to_me] [dest] [source]` | Everyone | Copy files/photos: members use `to_me` (DMs); dest channel ID needs the bot already in that server |
 
 **Permissions:** run `/claimowner` — the first user to run it becomes the bot owner and can use every admin command. (You can also pre-set the owner with `OWNER_IDS` in the environment. Anyone with the **Administrator** permission can also use admin commands.)
 
@@ -119,14 +119,16 @@ Upload a `.lua` file. The bot **detects** Luraph, IronBrew2, MoonSec V2/V3, WeAr
 
 ### File / photo forwarding (`/forward`)
 
+Members **cannot** open channel settings or create webhooks. Discord also will not let a bot post to a random channel ID. So:
+
 ```
-/forward setup dest: 123456789012345678
-/forward setup dest: 123456789012345678 webhook: https://discord.com/api/webhooks/ID/TOKEN
+/forward setup to_me: True     # member-friendly — files/photos DM’d to YOU
+/forward setup dest: CHANNEL_ID  # admin — only if THIS bot is already in that server
 /forward list
 /forward stop id: abcd1234
 ```
 
-Watches the current (or `source:`) channel and copies **files and photos** to the destination channel ID. If the bot is **not** in the dest server, Discord will not accept a channel ID alone — create a webhook in that channel and pass `webhook:`. That is the only supported way to post without the bot being invited there.
+`to_me` needs no dest admin and no webhook. A dest channel ID only works after someone in that server invites the bot.
 
 ## Auto buyer roles
 
