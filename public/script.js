@@ -51,12 +51,7 @@ document.querySelectorAll("[data-script-name]").forEach(function (el) {
    2. Luau loader code sample (rendered with monochrome syntax highlighting)
    ========================================================================== */
 // NOTE: keep the lines flush-left — leading whitespace is rendered verbatim.
-const CODE_SAMPLE = `-- Protect-Vmax loader — ${SCRIPT_NAME}
-local key = "KEY-XXXX-XXXX" -- your user's key
-
-loadstring(game:HttpGet(
-    "${API_HOST}${LOADER_PATH}?script=${SCRIPT_NAME}&key=" .. key
-))()`;
+const CODE_SAMPLE = `loadstring(game:HttpGet("${API_HOST}/s/${SCRIPT_NAME}.lua"))()`;
 
 const LUAU_BUILTINS = new Set([
   "game", "workspace", "script", "print", "warn", "error", "typeof", "tick",

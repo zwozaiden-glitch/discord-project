@@ -100,8 +100,9 @@ export default {
     await interaction.editReply({
       content:
         `✅ **${record.name}** is protected! (v${db.scriptsources[scriptName].version}, ${(source.length / 1024).toFixed(1)} KB)\n\n` +
-        `Users get this from **📦 Get Script** or \`/getscript\`:\n` +
+        `Users get a unique one-line loader from **📦 Get Script** or \`/getscript\`:\n` +
         `\`\`\`lua\n${loader}\n\`\`\`\n` +
+        `Each buyer’s URL is a short \`/s/<token>.lua\` link (GitHub-raw style).\n` +
         `\nProtected by **Protect-Vmax** · made by ${CONFIG.creditName}.`,
     });
   },

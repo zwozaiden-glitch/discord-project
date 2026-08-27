@@ -88,10 +88,8 @@ function deriveApiKey(user) {
 
 /* The loader your buyers paste into their executor. */
 function loaderSnippet(apiKey, hostedUrl) {
-  return (
-    'script_key = "' + apiKey + '"\n' +
-    'loadstring(game:HttpGet("' + hostedUrl + '"))()'
-  );
+  void apiKey;
+  return 'loadstring(game:HttpGet("' + hostedUrl + '"))()';
 }
 
 /* ----------------------------- state ----------------------------------- */

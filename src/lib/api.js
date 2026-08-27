@@ -12,6 +12,7 @@
 //   GET /health, /healthz                -> Health check
 //   GET /api/v1/validate?key=..&hwid=..  -> JSON verdict (public, rate-limited)
 //   GET /api/v1/load?script=..&key=..    -> protected Lua source (public, rate-limited)
+//   GET /s/<token>.lua  /raw/<token>.lua -> one-line short loaders (same as /load)
 //   GET /api/v1/status?user_id=..        -> whitelist status (token required)
 //   GET /api/v1/key?key=..               -> key record        (token required)
 import { createServer } from 'node:http';
@@ -26,6 +27,7 @@ import { formatKey } from './keys.js';
 import { recordValidation } from './analytics.js';
 import { protectSource } from './protect.js';
 import { db } from './store.js';
+import { getLoaderRecord } from './loader.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', '..', 'public');
@@ -520,6 +522,59 @@ function handleHostedScript(res, hashClean) {
   return res.end(source);
 }
 
+function writeProtectedSource(res, { script, key, hwid, ip }) {
+  const result = validateKey({ inputKey: key, hwid, script, ip, skipHwid: true });
+  recordValidation({ script, code: result.code, key, hwid, ip });
+  if (result.status !== 'valid') return json(res, 403, result);
+
+  const source = db.scriptsources?.[script]?.source;
+  if (!source) {
+    return json(res, 404, { status: 'error', code: 'no_script', message: 'No protected script uploaded yet.' });
+  }
+
+  const protectedSrc = protectSource(source, {
+    script,
+    key: formatKey(result.key),
+    hwid: result.hwid,
+    endpoint: CONFIG.publicUrl || `http://localhost:${CONFIG.apiPort}`,
+  });
+
+  res.writeHead(200, {
+    'Content-Type': 'text/plain; charset=utf-8',
+    'Cache-Control': 'no-store',
+    'Access-Control-Allow-Origin': '*',
+  });
+  return res.end(protectedSrc);
+}
+
+// GitHub-raw style short loader:
+//   GET /s/<token>.lua   GET /raw/<token>.lua
+function handleShortLoader(req, res, url, ip) {
+  const match = url.pathname.match(/^\/(?:s|raw)\/([^/]+)$/i);
+  if (!match) return false;
+
+  const token = decodeURIComponent(match[1]).replace(/\.lua$/i, '');
+  const hwid = url.searchParams.get('hwid') || '';
+  const rec = getLoaderRecord(token);
+  if (rec?.script && rec?.key) {
+    writeProtectedSource(res, { script: rec.script, key: rec.key, hwid, ip });
+    return true;
+  }
+
+  const key = url.searchParams.get('key') || '';
+  if (key) {
+    writeProtectedSource(res, { script: token, key, hwid, ip });
+    return true;
+  }
+
+  json(res, 404, {
+    status: 'error',
+    code: 'loader_not_found',
+    message: 'Unknown short loader. Get a fresh one-liner from /getscript or Get Script.',
+  });
+  return true;
+}
+
 function authorize(req, searchParams) {
   const token = getApiToken();
   if (!token) return true;
@@ -587,6 +642,13 @@ export function startApiServer(client) {
       return json(res, 429, { status: 'error', code: 'rate_limited', message: 'Too many requests — slow down.' });
     }
 
+    if (path.startsWith('/s/') || path.startsWith('/raw/')) {
+      if (rateLimited(ip)) {
+        return json(res, 429, { status: 'error', code: 'rate_limited', message: 'Too many requests — slow down.' });
+      }
+      return handleShortLoader(req, res, url, ip);
+    }
+
     if (path === '/health' || path === '/healthz') {
       if (path === '/healthz') {
         res.writeHead(200, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
@@ -649,28 +711,7 @@ export function startApiServer(client) {
       const script = url.searchParams.get('script') || '';
       const key = url.searchParams.get('key') || '';
       const hwid = url.searchParams.get('hwid') || '';
-      const result = validateKey({ inputKey: key, hwid, script, ip, skipHwid: true });
-      recordValidation({ script, code: result.code, key, hwid, ip });
-      if (result.status !== 'valid') return json(res, 403, result);
-
-      const source = db.scriptsources?.[script]?.source;
-      if (!source) {
-        return json(res, 404, { status: 'error', code: 'no_script', message: 'No protected script uploaded yet.' });
-      }
-
-      const protectedSrc = protectSource(source, {
-        script,
-        key: formatKey(result.key),
-        hwid: result.hwid,
-        endpoint: CONFIG.publicUrl || `http://localhost:${CONFIG.apiPort}`,
-      });
-
-      res.writeHead(200, {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-store',
-        'Access-Control-Allow-Origin': '*',
-      });
-      return res.end(protectedSrc);
+      return writeProtectedSource(res, { script, key, hwid, ip });
     }
 
     // ---- Admin endpoints (require API token) ----

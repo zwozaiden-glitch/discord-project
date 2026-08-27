@@ -13,7 +13,11 @@ A Discord bot built with [discord.js](https://discord.js.org/) v14, with a compl
 - 🎫 **Interactive key panels** — users click **Redeem Key / Get Script / My Key / Reset HWID** buttons (no commands needed)
 - 📨 **Private support tickets** — `/ticketsetup` creates an Open Ticket panel with one-ticket-per-user protection, staff claim/unclaim/close buttons, member add/remove commands, and a dedicated audit log
 - 🏷️ **One-command role setup** — `/rolesetup name: Vmax` creates 13 roles such as Admin Vmax, Staff Vmax, Buyer Vmax, Member Vmax, and Muted Vmax
-- ✨ **Short feature menu** — `/features` shows all 25 main bot features in one compact list
+- ✨ **Short feature menu** — `/features` shows all main bot features in one compact list
+- 🧬 **Lua deobfuscator** — `/deobf` auto-detects Luraph, IronBrew2, MoonSec V2/V3, WeAreDevs, Prometheus, AztupBrew (or pick one) then returns a cleaned `.lua` file
+- 🧪 **ENV logger** — `/envlog` gives an executor script that dumps `getsenv` functions/values/upvalues
+- 📨 **File/photo forwarding** — `/forward setup dest: CHANNEL_ID` copies files and images to another server; use `webhook:` if the bot is not in the destination
+- 🧾 **One-line loaders** — buyers paste `loadstring(game:HttpGet("https://your-host/s/<token>.lua"))()`
 - 🧹 **Message cleanup** — `/clear amount:` lets members with Manage Messages remove up to 100 recent messages
 - 🏷️ **Auto buyer roles** — `/setbuyerrole` assigns a role automatically when users redeem; whitelist whole roles with `/whitelist role:`
 - 📊 **Analytics** — `/analytics` shows runs per day, top keys, HWID/status activity (keys & HWIDs masked)
@@ -45,6 +49,9 @@ src/
     ├── tickets.js        # Ticket panels, private channels, and staff controls
     ├── ticketStore.js    # Persistent ticket configuration/open-ticket records
     ├── protect.js        # Wraps scripts with the runtime whitelist check
+    ├── loader.js         # One-line loadstring(game:HttpGet("/s/token.lua"))()
+    ├── deobfuscator.js   # Obfuscator detect + Luraph/IB2/MoonSec/WRD passes
+    ├── forward.js        # Cross-server file/photo forwarding (channel ID or webhook)
     ├── analytics.js      # Validation run analytics
     ├── roles.js          # Auto buyer role assignment
     ├── api.js            # HTTP validation/load/status API & Web static server
@@ -97,6 +104,11 @@ public/                   # Web landing page assets
 /whitelist script: luasnapper user: @buyer     # give a buyer a key
 /keydrop script: luasnapper amount: 3          # public drop
 /analytics                                     # see script activity
+/deobf file: obfuscated.lua                    # auto-detect obfuscator, then deobf
+/deobf file: obfuscated.lua obfuscator: luraph # force a specific pipeline
+/envlog                                        # get the ENV-Logger dump script
+/forward setup dest: 123456789012345678        # forward files/photos to that channel ID
+/forward setup dest: 123 webhook: https://discord.com/api/webhooks/...   # dest without the bot
 
 # Ticket setup (choose these from Discord's slash-command option menus):
 /ticketsetup category: Tickets support_role: @Support log_channel: #ticket-logs panel_channel: #open-a-ticket

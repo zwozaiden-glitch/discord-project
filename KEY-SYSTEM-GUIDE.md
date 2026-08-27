@@ -35,6 +35,9 @@ Your bot now has a complete license-key system, like the Luarmor-style bots you'
 | `/redeem key: LSN-...` | Everyone | Claims a key you were given |
 | `/keyinfo [key]` | Everyone | Your key status + HWID binding (admins can inspect any key) |
 | `/scripts` | Everyone | Lists all scripts + whether you're whitelisted |
+| `/deobf file: [obfuscator] [detect_only]` | Everyone | Detect + deobfuscate a Lua file (Luraph, IronBrew, MoonSec, WeAreDevs, …) |
+| `/envlog` | Everyone | Download the ENV-Logger `getsenv` dump script |
+| `/forward setup dest: CHANNEL_ID [webhook] [source]` | Admin | Forward files/photos to another channel ID (webhook if bot isn't in dest) |
 
 **Permissions:** run `/claimowner` — the first user to run it becomes the bot owner and can use every admin command. (You can also pre-set the owner with `OWNER_IDS` in the environment. Anyone with the **Administrator** permission can also use admin commands.)
 
@@ -89,20 +92,41 @@ Example:
    /apply script: luasnapper file: myscript.lua
    ```
 2. The bot stores the protected script (max 512 KB) and wraps it with a **runtime whitelist check** — it validates the key + HWID against the API before your code runs.
-3. Users click **📦 Get Script** on the panel (or run `/getscript`) and get:
+3. Users click **📦 Get Script** on the panel (or run `/getscript`) and get a **one-line** loader:
    ```lua
-   -- Protect-Vmax loader — luasnapper
-
-   local key = "LSN-XXXXX-XXXXX-XXXXX" -- your user's key
-
-   loadstring(game:HttpGet(
-       "https://discord-project-production-a058.up.railway.app/api/v1/load?script=luasnapper&key=" .. key
-   ))()
+   loadstring(game:HttpGet("https://discord-project-production-a058.up.railway.app/s/<token>.lua"))()
    ```
 4. First run binds their HWID automatically. The wrapped source is credited to **Zwoz**.
 
-> Loadstrings use `PUBLIC_URL` (default `https://discord-project-production-a058.up.railway.app`).
-> The `/api/v1/load` endpoint only needs a valid key to serve the source. HWID is bound the first time the script runs.
+> Loadstrings use `PUBLIC_URL`. `/s/<token>.lua` (and `/raw/<token>.lua`) map to that buyer’s key.
+> The longer `/api/v1/load?script=&key=` URL still works. HWID is bound the first time the script runs.
+
+### Do I need a website to host the loader?
+
+**No extra website.** The bot already hosts loaders on Railway (`PUBLIC_URL`):
+
+```lua
+loadstring(game:HttpGet("https://your-app.up.railway.app/s/abc123.lua"))()
+```
+
+GitHub raw (`raw.githubusercontent.com`) only works for **public, unprotected** files — no key or HWID check. If you want whitelist + HWID locking, you need *some* HTTP server. You already have one (this bot). You do **not** need GitHub, Pastebin, or a second site.
+
+### Deobfuscator (`/deobf`) + ENV logger (`/envlog`)
+
+Upload a `.lua` file. The bot **detects** Luraph, IronBrew2, MoonSec V2/V3, WeAreDevs, Prometheus, AztupBrew, or luaobfuscator.com, then runs that pipeline (or the one you pick with `obfuscator:`). Use `detect_only: true` to only fingerprint. VM protectors cannot be fully lifted in-process; constants, URLs, `string.char` / `loadstring` wrappers, and a beautified dump are still returned as a file.
+
+`/envlog` gives the ENV-Logger helper: set `getgenv().FilePath` to a Script Instance and run it to dump `getsenv`.
+
+### File / photo forwarding (`/forward`)
+
+```
+/forward setup dest: 123456789012345678
+/forward setup dest: 123456789012345678 webhook: https://discord.com/api/webhooks/ID/TOKEN
+/forward list
+/forward stop id: abcd1234
+```
+
+Watches the current (or `source:`) channel and copies **files and photos** to the destination channel ID. If the bot is **not** in the dest server, Discord will not accept a channel ID alone — create a webhook in that channel and pass `webhook:`. That is the only supported way to post without the bot being invited there.
 
 ## Auto buyer roles
 

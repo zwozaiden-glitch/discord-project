@@ -21,15 +21,18 @@ const { loadCommandModules } = await import('../src/lib/commandSync.js');
 const commandCollection = new Collection();
 const commandModules = await loadCommandModules(commandCollection);
 for (const command of commandModules) command.data.toJSON();
-assert.equal(commandModules.length, 26, 'all slash commands load');
+assert.equal(commandModules.length, 29, 'all slash commands load');
 assert.ok(commandCollection.has('rolesetup'));
 assert.ok(commandCollection.has('clear'));
 assert.ok(commandCollection.has('features'));
 assert.ok(commandCollection.has('ticketsetup'));
 assert.ok(commandCollection.has('ticket'));
+assert.ok(commandCollection.has('deobf'));
+assert.ok(commandCollection.has('forward'));
+assert.ok(commandCollection.has('envlog'));
 const { FEATURES } = await import('../src/commands/features.js');
 const { ROLE_PRESET, formatRoleName } = await import('../src/commands/rolesetup.js');
-assert.equal(FEATURES.length, 25, '/features keeps the promised short 25-item list');
+assert.equal(FEATURES.length, 28, '/features keeps the promised short feature list');
 assert.equal(ROLE_PRESET.length, 13, '/rolesetup keeps the promised 13-role preset');
 assert.ok(ROLE_PRESET.some((role) => role.name === 'Staff'));
 assert.ok(ROLE_PRESET.some((role) => role.name === 'Member'));
@@ -239,13 +242,39 @@ assert.ok(protectedSrc.includes('__V_hwid()'), 'runtime HWID detection included'
 assert.ok(protectedSrc.includes('print("hi")'), 'original source kept');
 assert.ok(protectedSrc.includes('Owner  : Zwoz'), 'credit in wrapped source');
 
-const { buildLoader } = await import('../src/lib/loader.js');
+const { buildLoader, mintLoaderToken, getLoaderRecord } = await import('../src/lib/loader.js');
 const loader = buildLoader('Vmax', raw3);
-assert.ok(loader.includes('-- Protect-Vmax loader — Vmax'), 'loader header');
-assert.ok(loader.includes('local key = "'), 'loader key var');
-assert.ok(loader.includes('/api/v1/load?script=Vmax&key=" .. key'), 'loader concatenates key');
-assert.ok(loader.includes('loadstring(game:HttpGet('), 'loader uses HttpGet');
+assert.match(loader, /^loadstring\(game:HttpGet\("/, 'one-line loader');
+assert.ok(loader.includes('/s/'), 'short /s/ token path');
+assert.ok(loader.endsWith('))()'), 'loader invokes loadstring');
 assert.ok(loader.includes('https://discord-project-production-a058.up.railway.app'), 'loader uses the public host');
+assert.ok(!loader.includes('\n'), 'loader is a single line');
+const minted = mintLoaderToken('Vmax', raw3);
+assert.equal(getLoaderRecord(minted).script, 'Vmax');
+assert.ok(loader.includes(minted), 'loader URL uses the minted token');
+
+
+// --- deobfuscator detect + generic cleanup ---
+const deobf = await import('../src/lib/deobfuscator.js');
+const moon = deobf.detectObfuscator('-- This file was protected with MoonSec V3\nreturn 1');
+assert.equal(moon.best.id, 'moonsecv3', 'detects MoonSec V3 banner');
+const wrd = deobf.deobfuscate('print(string.char(72,105))\nloadstring("print(1)")()', 'wearedevs');
+assert.ok(wrd.output.includes("'Hi'") || wrd.output.includes('print(1)'), 'folds string.char / unwraps loadstring');
+const envSrc = deobf.envLoggerSource();
+assert.ok(envSrc.includes('getsenv'), 'env logger dumps getsenv');
+assert.ok(envSrc.includes('FilePath'), 'env logger documents FilePath');
+
+const { addForward, listForwards, removeForward, isWebhookUrl, isSnowflake } = await import('../src/lib/forward.js');
+assert.equal(isSnowflake('123456789012345678'), true);
+assert.equal(isWebhookUrl('https://discord.com/api/webhooks/1/abc'), true);
+const fwd = addForward({
+  guildId: 'guild-1',
+  sourceChannelId: '111',
+  destChannelId: '222',
+  createdBy: 'user-1',
+});
+assert.equal(listForwards('guild-1').length, 1);
+assert.equal(removeForward(fwd.id), true);
 
 // skipHwid lets /load succeed without a device id
 const skipKey = makeKey('luasnapper', { claimedBy: 'user-skip', duration: 'never' });
@@ -374,6 +403,17 @@ assert.ok(loaded.includes('PROTECT-VMAX'), 'load returns protected source');
 assert.ok(loaded.includes('print("hello from protected script")'), 'load includes original source');
 assert.ok(loaded.includes('Owner  : Zwoz'), 'load credits Zwoz');
 assert.ok(loaded.includes('__V_hwid()'), 'load includes runtime HWID detection');
+
+
+// short GitHub-raw style loader: GET /s/<token>.lua
+const shortToken = mintLoaderToken('luasnapper', rawApi);
+res = await get(`/s/${shortToken}.lua`);
+assert.equal(res.status, 200, 'short /s/token.lua serves protected source');
+const shortLoaded = await res.text();
+assert.ok(shortLoaded.includes('PROTECT-VMAX'), 'short loader is protected');
+assert.ok(shortLoaded.includes('print("hello from protected script")'));
+res = await get(`/raw/${shortToken}.lua`);
+assert.equal(res.status, 200, 'github-style /raw/token.lua works too');
 
 // load endpoint: still serves source even if a different hwid is passed (binding happens at validate time)
 res = await get(`/api/v1/load?script=luasnapper&key=${encodeURIComponent(rawApi)}&hwid=OTHER-DEVICE`);
