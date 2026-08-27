@@ -534,6 +534,65 @@ assert.equal(res.status, 200, 'signed website session opens its dashboard');
 res = await get('/api/user/999', { Cookie: sessionCookie });
 assert.equal(res.status, 403, 'signed website session cannot open another dashboard');
 
+// VMax Forwarder dashboard endpoints require an authenticated dashboard manager.
+CONFIG.forwarder.dashboardManagerIds = ['42'];
+res = await get('/api/forwarder/overview', { Cookie: sessionCookie });
+assert.equal(res.status, 200, 'forwarder overview opens for dashboard manager');
+let forwarderOverview = await res.json();
+assert.equal(forwarderOverview.status, 'ok');
+assert.ok(Array.isArray(forwarderOverview.rules));
+
+res = await fetch(`${localBase}/api/forwarder/rules`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    Cookie: sessionCookie,
+  },
+  body: JSON.stringify({
+    sourceGuildId: 'guild-1',
+    sourceGuildName: 'Guild One',
+    sourceChannelId: '123456789012345678',
+    sourceChannelName: 'uploads',
+    destinationWebhook: 'https://discord.com/api/webhooks/1/abcdefghijklmnop',
+    allowedFileTypes: 'png,jpg,pdf',
+    maxFileSizeBytes: 4 * 1024 * 1024,
+    forwardText: true,
+    forwardEmbeds: false,
+    showAuthor: true,
+    enabled: true,
+  }),
+});
+assert.equal(res.status, 201, 'forwarder rule can be created from dashboard');
+let createdRuleBody = await res.json();
+assert.equal(createdRuleBody.status, 'ok');
+assert.equal(createdRuleBody.rule.sourceChannelName, 'uploads');
+assert.ok(createdRuleBody.rule.destWebhookRedacted.includes('webhook:'), 'webhook is redacted in API responses');
+
+res = await get('/api/forwarder/rules', { Cookie: sessionCookie });
+assert.equal(res.status, 200);
+let rulesBody = await res.json();
+assert.ok(Array.isArray(rulesBody.rules));
+assert.ok(rulesBody.rules.length >= 1);
+const dashboardRuleId = rulesBody.rules[0].id;
+
+res = await fetch(`${localBase}/api/forwarder/rules/${dashboardRuleId}/disable`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    Cookie: sessionCookie,
+  },
+  body: '{}',
+});
+assert.equal(res.status, 200, 'forwarder rule can be disabled');
+let disableBody = await res.json();
+assert.equal(disableBody.rule.enabled, false);
+
+res = await get('/api/forwarder/logs', { Cookie: sessionCookie });
+assert.equal(res.status, 200, 'forwarder logs endpoint works');
+let logsBody = await res.json();
+assert.ok(Array.isArray(logsBody.logs));
+assert.ok(Array.isArray(logsBody.history));
+
 // Logout invalidates the browser cookie.
 res = await fetch(`${localBase}/auth/logout`, {
   method: 'POST',

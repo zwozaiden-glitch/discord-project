@@ -1,213 +1,340 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { isAdmin } from '../lib/permissions.js';
+import { ensureAdmin } from '../lib/permissions.js';
 import {
+  DEFAULT_MAX_FILE_SIZE_BYTES,
+  SUPPORTED_FORWARD_TYPES,
   addForward,
+  createRuleSummary,
   describeDest,
+  getForward,
+  getForwardStatus,
   isSnowflake,
   isWebhookUrl,
   listForwards,
   removeForward,
+  sendForwardTest,
+  setForwardEnabled,
+  validateDestinationChannelAccess,
 } from '../lib/forward.js';
+
+function maxSizeMbDefault() {
+  return Math.floor(DEFAULT_MAX_FILE_SIZE_BYTES / (1024 * 1024));
+}
+
+function trimId(value) {
+  return String(value || '').trim();
+}
+
+function formatRuleLine(rule) {
+  return [
+    `• \`${rule.id}\``,
+    `${rule.enabled ? '🟢' : '⚪'} **${rule.sourceChannelName || rule.sourceChannelId}** → **${describeDest(rule)}**`,
+    `types: ${rule.allowedFileTypes.includes('all') ? 'all safe types' : rule.allowedFileTypes.join(', ')}`,
+    `max: ${(rule.maxFileSizeBytes / (1024 * 1024)).toFixed(0)} MB`,
+    `text: ${rule.forwardText ? 'yes' : 'no'}`,
+    `embeds: ${rule.forwardEmbeds ? 'yes' : 'no'}`,
+    `author: ${rule.showAuthor ? 'yes' : 'no'}`,
+    `forwarded: ${rule.stats.forwardedCount || 0}`,
+  ].join(' · ');
+}
 
 export default {
   data: new SlashCommandBuilder()
     .setName('forward')
-    .setDescription('Copy files and photos from this channel to your DMs or another channel the bot can see.')
+    .setDescription('Manage attachment forwarding rules for this server.')
     .addSubcommand((sub) =>
       sub
-        .setName('setup')
-        .setDescription('Start copying files/photos. Members: sent to your DMs. No webhook needed.')
-        .addBooleanOption((o) =>
-          o.setName('to_me').setDescription('Send every file/photo to YOUR DMs (works as a member)')
+        .setName('add')
+        .setDescription('Create a new forwarding rule.')
+        .addChannelOption((option) =>
+          option
+            .setName('source_channel')
+            .setDescription('Source channel to monitor (defaults to this channel).'),
         )
-        .addStringOption((o) =>
-          o
-            .setName('dest')
-            .setDescription('Channel ID — only works if this bot is already in that server')
+        .addStringOption((option) =>
+          option
+            .setName('destination_webhook')
+            .setDescription('Destination Discord webhook URL (recommended for external servers).'),
         )
-        .addChannelOption((o) =>
-          o.setName('source').setDescription('Channel to watch (defaults to this channel)')
+        .addStringOption((option) =>
+          option
+            .setName('destination_channel_id')
+            .setDescription('Destination channel ID if the bot is already allowed to post there.'),
         )
-        .addStringOption((o) =>
-          o.setName('webhook').setDescription('Optional webhook URL if a dest admin already gave you one')
+        .addStringOption((option) =>
+          option
+            .setName('allowed_types')
+            .setDescription('Comma-separated types like png,jpg,pdf,zip or all.')
+            .setMaxLength(200),
         )
+        .addIntegerOption((option) =>
+          option
+            .setName('max_size_mb')
+            .setDescription(`Maximum file size in MB (default ${maxSizeMbDefault()} MB).`)
+            .setMinValue(1)
+            .setMaxValue(100),
+        )
+        .addBooleanOption((option) =>
+          option
+            .setName('forward_text')
+            .setDescription('Also forward the original message text/caption (default true).'),
+        )
+        .addBooleanOption((option) =>
+          option
+            .setName('forward_embeds')
+            .setDescription('Also forward Discord embeds from the source message (default false).'),
+        )
+        .addBooleanOption((option) =>
+          option
+            .setName('show_author')
+            .setDescription('Show the original author name/avatar in forwarded posts (default true).'),
+        )
+        .addBooleanOption((option) =>
+          option
+            .setName('enabled')
+            .setDescription('Enable the rule immediately (default true).'),
+        ),
     )
-    .addSubcommand((sub) => sub.setName('list').setDescription('List your file/photo forward rules.'))
+    .addSubcommand((sub) => sub.setName('list').setDescription('List forwarding rules for this server.'))
     .addSubcommand((sub) =>
       sub
-        .setName('stop')
-        .setDescription('Stop a forward rule.')
-        .addStringOption((o) =>
-          o.setName('id').setDescription('Rule id from /forward list').setRequired(true).setAutocomplete(true)
-        )
-    ),
+        .setName('remove')
+        .setDescription('Remove a forwarding rule.')
+        .addStringOption((option) =>
+          option.setName('id').setDescription('Rule ID from /forward list.').setRequired(true).setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('enable')
+        .setDescription('Enable a forwarding rule.')
+        .addStringOption((option) =>
+          option.setName('id').setDescription('Rule ID from /forward list.').setRequired(true).setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('disable')
+        .setDescription('Disable a forwarding rule.')
+        .addStringOption((option) =>
+          option.setName('id').setDescription('Rule ID from /forward list.').setRequired(true).setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('test')
+        .setDescription('Send a test payload through an existing forwarding rule.')
+        .addStringOption((option) =>
+          option.setName('id').setDescription('Rule ID from /forward list.').setRequired(true).setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((sub) => sub.setName('status').setDescription('Show forwarding health and totals.')),
 
   async autocomplete(interaction) {
-    if (interaction.options.getSubcommand() !== 'stop') {
-      return interaction.respond([]);
+    const sub = interaction.options.getSubcommand();
+    if (!['remove', 'enable', 'disable', 'test'].includes(sub)) {
+      await interaction.respond([]);
+      return;
     }
+
     const focused = interaction.options.getFocused().toLowerCase();
-    const choices = listForwards(interaction.guildId, {
+    const rules = listForwards(interaction.guildId, {
       userId: interaction.user.id,
-      admin: isAdmin(interaction),
+      admin: true,
     })
       .map((rule) => ({
-        name: `${rule.id}  → ${rule.destUserId ? 'your DMs' : rule.destChannelId || 'webhook'}`,
+        name: `${rule.id} · ${rule.sourceChannelName || rule.sourceChannelId} → ${describeDest(rule)}`.slice(0, 100),
         value: rule.id,
       }))
       .filter((choice) => choice.name.toLowerCase().includes(focused) || choice.value.includes(focused))
       .slice(0, 25);
-    await interaction.respond(choices);
+
+    await interaction.respond(rules);
   },
 
   async execute(interaction) {
-    const admin = isAdmin(interaction);
+    if (!(await ensureAdmin(interaction))) return;
+    if (!interaction.inGuild()) {
+      await interaction.reply({ content: '❌ This command can only be used inside a server.', ephemeral: true });
+      return;
+    }
+
     const sub = interaction.options.getSubcommand();
 
     if (sub === 'list') {
-      const rules = listForwards(interaction.guildId, { userId: interaction.user.id, admin });
+      const rules = listForwards(interaction.guildId, { admin: true });
       if (!rules.length) {
-        return interaction.reply({
+        await interaction.reply({
           content:
-            'No forward rules yet.\n' +
-            'As a member, run `/forward setup to_me: True` — files posted here will be DMed to you.\n' +
-            'You do **not** need channel settings or a webhook.',
+            'No forwarding rules are configured for this server yet.\n\n' +
+            'Use `/forward add` and set either a destination webhook URL or a destination channel ID.',
           ephemeral: true,
         });
+        return;
       }
-      const lines = rules.map(
-        (rule) => `• \`${rule.id}\`  <#${rule.sourceChannelId}> → ${describeDest(rule)}  · ${rule.forwarded || 0} file(s)`,
-      );
-      return interaction.reply({ content: `📨 **Forward rules**\n${lines.join('\n')}`, ephemeral: true });
+
+      const lines = rules.map(formatRuleLine);
+      await interaction.reply({
+        content: `## VMax Forwarder Rules\n${lines.join('\n')}`.slice(0, 1990),
+        ephemeral: true,
+      });
+      return;
     }
 
-    if (sub === 'stop') {
-      const id = interaction.options.getString('id', true).trim();
-      const rule = listForwards(interaction.guildId, { userId: interaction.user.id, admin }).find((item) => item.id === id);
-      if (!rule) {
-        return interaction.reply({ content: '❌ Unknown rule id. Check `/forward list`.', ephemeral: true });
+    if (sub === 'status') {
+      const status = getForwardStatus(interaction.client);
+      const rules = listForwards(interaction.guildId, { admin: true });
+      const serverActive = rules.filter((rule) => rule.enabled).length;
+      const serverForwarded = rules.reduce((sum, rule) => sum + Number(rule.stats.forwardedCount || 0), 0);
+      const serverFailed = rules.reduce((sum, rule) => sum + Number(rule.stats.failedCount || 0), 0);
+      const lastError = status.lastError?.message ? `\nLast error: ${status.lastError.message}` : '';
+
+      await interaction.reply({
+        content:
+          `## VMax Forwarder Status\n` +
+          `Bot: ${status.botConnected ? `online as **${status.botTag}**` : 'offline'}\n` +
+          `This server: **${serverActive}** active rule(s), **${rules.length}** total rule(s)\n` +
+          `Forwarded files (this server): **${serverForwarded}**\n` +
+          `Failures (this server): **${serverFailed}**\n` +
+          `Duplicate blocks (global): **${status.duplicatesBlocked}**\n` +
+          `Oversized blocks (global): **${status.oversizedBlocked}**\n` +
+          `Official limitation: the bot can only read channels it has access to. External destination servers must provide a Discord webhook intentionally created by their administrator.${lastError}`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (['remove', 'enable', 'disable', 'test'].includes(sub)) {
+      const id = trimId(interaction.options.getString('id', true));
+      const rule = getForward(id);
+      if (!rule || rule.guildId !== interaction.guildId) {
+        await interaction.reply({ content: '❌ Unknown rule ID for this server.', ephemeral: true });
+        return;
       }
-      removeForward(id);
-      return interaction.reply({ content: `🛑 Stopped forward \`${id}\`.`, ephemeral: true });
-    }
 
-    const toMe = interaction.options.getBoolean('to_me');
-    const destInput = (interaction.options.getString('dest') || '').trim();
-    const webhookInput = (interaction.options.getString('webhook') || '').trim();
-    const source = interaction.options.getChannel('source') || interaction.channel;
+      if (sub === 'remove') {
+        removeForward(id, interaction.user.id);
+        await interaction.reply({ content: `🗑️ Removed forwarding rule \`${id}\`.`, ephemeral: true });
+        return;
+      }
 
-    if (!source?.id) {
-      return interaction.reply({ content: '❌ Could not resolve the source channel.', ephemeral: true });
-    }
+      if (sub === 'enable' || sub === 'disable') {
+        const enabled = sub === 'enable';
+        const updated = setForwardEnabled(id, enabled, interaction.user.id);
+        await interaction.reply({
+          content: `${enabled ? '🟢 Enabled' : '⚪ Disabled'} rule \`${id}\` → ${describeDest(updated)}.`,
+          ephemeral: true,
+        });
+        return;
+      }
 
-    // Members (and anyone who picks to_me): dump files into their DMs.
-    // This needs no dest admin, no webhook, no bot in another server.
-    const useDm = toMe === true || (!destInput && !webhookInput);
-    if (useDm) {
+      await interaction.deferReply({ ephemeral: true });
       try {
-        await interaction.user.send(
-          '📨 Forward is on. I will DM you files and photos posted in that channel. If you did not get this, enable **Privacy Settings → Direct Messages** for this server.',
-        );
-      } catch {
-        return interaction.reply({
-          content:
-            '❌ I cannot DM you. Open **User Settings → Privacy & Safety**, allow DMs from server members, then run `/forward setup to_me: True` again.',
-          ephemeral: true,
-        });
+        await sendForwardTest(id, interaction.client, interaction.user.id);
+        await interaction.editReply('🧪 Test payload sent successfully. Check the destination channel/webhook.');
+      } catch (error) {
+        await interaction.editReply(`❌ Test failed: ${error.message}`);
+      }
+      return;
+    }
+
+    const sourceChannel = interaction.options.getChannel('source_channel') || interaction.channel;
+    const destinationWebhook = trimId(interaction.options.getString('destination_webhook'));
+    const destinationChannelId = trimId(interaction.options.getString('destination_channel_id'));
+    const allowedTypes = trimId(interaction.options.getString('allowed_types')) || 'all';
+    const maxSizeMb = interaction.options.getInteger('max_size_mb') ?? maxSizeMbDefault();
+    const forwardText = interaction.options.getBoolean('forward_text');
+    const forwardEmbeds = interaction.options.getBoolean('forward_embeds');
+    const showAuthor = interaction.options.getBoolean('show_author');
+    const enabled = interaction.options.getBoolean('enabled');
+
+    if (!sourceChannel?.id || !sourceChannel.isTextBased?.()) {
+      await interaction.reply({ content: '❌ The source channel must be a text-based channel.', ephemeral: true });
+      return;
+    }
+
+    if (!destinationWebhook && !destinationChannelId) {
+      await interaction.reply({
+        content: '❌ Provide either `destination_webhook` or `destination_channel_id`.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (destinationWebhook && destinationChannelId) {
+      await interaction.reply({
+        content: '❌ Choose only one destination type: webhook OR destination channel ID.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (destinationWebhook && !isWebhookUrl(destinationWebhook)) {
+      await interaction.reply({ content: '❌ The destination webhook URL is invalid.', ephemeral: true });
+      return;
+    }
+
+    let destinationMeta = {
+      destinationType: destinationWebhook ? 'webhook' : 'channel',
+      destinationChannelId: null,
+      destinationGuildId: null,
+      destinationGuildName: null,
+      destinationChannelName: null,
+      destWebhook: destinationWebhook || null,
+    };
+
+    if (destinationChannelId) {
+      if (!isSnowflake(destinationChannelId)) {
+        await interaction.reply({ content: '❌ `destination_channel_id` must be a valid Discord channel ID.', ephemeral: true });
+        return;
       }
 
-      const rule = addForward({
-        guildId: interaction.guildId,
-        sourceChannelId: source.id,
-        destUserId: interaction.user.id,
-        createdBy: interaction.user.id,
-      });
+      const checked = await validateDestinationChannelAccess(
+        interaction.client,
+        destinationChannelId,
+        interaction.guildId,
+        interaction.user.id,
+      );
+      if (!checked.ok) {
+        await interaction.reply({ content: `❌ ${checked.message}`, ephemeral: true });
+        return;
+      }
 
-      return interaction.reply({
-        content:
-          `✅ Forward \`${rule.id}\` is live — **as a member, no webhook needed.**\n` +
-          `Watching ${source} → **your DMs**.\n` +
-          `Stop with \`/forward stop id: ${rule.id}\`.`,
-        ephemeral: true,
-      });
-    }
-
-    if (webhookInput && !isWebhookUrl(webhookInput)) {
-      return interaction.reply({
-        content: '❌ That webhook URL is invalid.',
-        ephemeral: true,
-      });
-    }
-
-    if (webhookInput && !admin) {
-      return interaction.reply({
-        content:
-          '❌ Members cannot set a webhook dest (you also cannot *create* one without channel settings).\n' +
-          'Use `/forward setup to_me: True` instead — files come to your DMs.',
-        ephemeral: true,
-      });
-    }
-
-    const destId = destInput.replace(/[<#>]/g, '');
-    if (webhookInput) {
-      const rule = addForward({
-        guildId: interaction.guildId,
-        sourceChannelId: source.id,
-        destChannelId: isSnowflake(destId) ? destId : null,
-        destWebhook: webhookInput,
-        createdBy: interaction.user.id,
-      });
-      return interaction.reply({
-        content: `✅ Forward \`${rule.id}\` → webhook.\nStop with \`/forward stop id: ${rule.id}\`.`,
-        ephemeral: true,
-      });
-    }
-
-    if (!admin) {
-      return interaction.reply({
-        content:
-          '❌ **You don’t need dest admin / webhooks.** Discord will not let a member (or this bot) post into a channel just from an ID.\n\n' +
-          'What you *can* do as a member:\n' +
-          '• `/forward setup to_me: True` — every file/photo in this channel is DMed to **you**\n\n' +
-          'A dest channel ID only works if **this bot is already invited** to that server (an admin there must invite it). Then an admin here can run `/forward setup dest: CHANNEL_ID`.',
-        ephemeral: true,
-      });
-    }
-
-    if (!isSnowflake(destId)) {
-      return interaction.reply({
-        content:
-          '❌ `dest` must be a channel ID (right-click channel → Copy Channel ID).\n' +
-          'Or skip dest and use `to_me: True`.',
-        ephemeral: true,
-      });
-    }
-
-    const dest = await interaction.client.channels.fetch(destId).catch(() => null);
-    if (!dest?.isTextBased?.()) {
-      return interaction.reply({
-        content:
-          '❌ I cannot send to that channel ID — **I am not in that server.**\n\n' +
-          'Members cannot open channel settings or create webhooks, so that path is closed.\n\n' +
-          '**Working options:**\n' +
-          '1. Ask an admin of the dest server to **invite this bot**, then rerun `/forward setup dest: ID`\n' +
-          '2. `/forward setup to_me: True` — files go to **your DMs** (works as a member, no dest admin)',
-        ephemeral: true,
-      });
+      destinationMeta = {
+        destinationType: 'channel',
+        destinationChannelId: checked.destination.id,
+        destinationGuildId: checked.destination.guildId || null,
+        destinationGuildName: checked.destination.guild?.name || null,
+        destinationChannelName:
+          checked.destination.name ||
+          checked.destination.id,
+        destWebhook: null,
+      };
     }
 
     const rule = addForward({
       guildId: interaction.guildId,
-      sourceChannelId: source.id,
-      destChannelId: destId,
+      sourceGuildId: interaction.guildId,
+      sourceGuildName: interaction.guild?.name || null,
+      sourceChannelId: sourceChannel.id,
+      sourceChannelName: sourceChannel.name || sourceChannel.id,
       createdBy: interaction.user.id,
+      updatedBy: interaction.user.id,
+      allowedFileTypes: allowedTypes,
+      maxFileSizeBytes: maxSizeMb * 1024 * 1024,
+      forwardText: forwardText ?? true,
+      forwardEmbeds: forwardEmbeds ?? false,
+      showAuthor: showAuthor ?? true,
+      enabled: enabled ?? true,
+      ...destinationMeta,
     });
 
     await interaction.reply({
       content:
-        `✅ Forward \`${rule.id}\` is live.\n` +
-        `Watching ${source} → ${dest}\n` +
-        `Stop with \`/forward stop id: ${rule.id}\`.`,
+        `✅ Forwarding rule created.\n\n` +
+        `${createRuleSummary(rule)}\n\n` +
+        `Supported type shortcuts: ${SUPPORTED_FORWARD_TYPES.slice(0, 12).join(', ')}…\n` +
+        `Security note: this bot will only use the official Discord Bot API and Discord Webhooks. It will not bypass server permissions or access channels where it has not been invited.`,
       ephemeral: true,
     });
   },

@@ -28,6 +28,22 @@ import { recordValidation } from './analytics.js';
 import { protectSource } from './protect.js';
 import { db } from './store.js';
 import { getLoaderRecord } from './loader.js';
+import {
+  addForward,
+  getForward,
+  getForwardHistory,
+  getForwardLogs,
+  getForwardRulesForDashboard,
+  getForwardStatus,
+  isDashboardManager,
+  isSnowflake,
+  isWebhookUrl,
+  removeForward,
+  ruleToApi,
+  sendForwardTest,
+  setForwardEnabled,
+  validateDestinationChannelAccess,
+} from './forward.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = join(__dirname, '..', '..', 'public');
@@ -111,6 +127,69 @@ function sameValue(left, right) {
   const a = Buffer.from(String(left || ''));
   const b = Buffer.from(String(right || ''));
   return a.length === b.length && a.length > 0 && timingSafeEqual(a, b);
+}
+
+async function getAuthenticatedUser(req) {
+  const sessionUser = readSession(req)?.user || null;
+  if (sessionUser?.id) return sessionUser;
+
+  const auth = req.headers.authorization || '';
+  const match = auth.match(/^Bearer\s+(.+)$/i);
+  if (!match) return null;
+
+  try {
+    const response = await fetch(DISCORD_API + '/users/@me', {
+      headers: { Authorization: `Bearer ${match[1]}` },
+    });
+    if (!response.ok) return null;
+    const user = await response.json();
+    return user?.id ? user : null;
+  } catch {
+    return null;
+  }
+}
+
+async function requireForwarderManager(req, res) {
+  const user = await getAuthenticatedUser(req);
+  if (!user?.id) {
+    unauthorized(res);
+    return null;
+  }
+  if (!isDashboardManager(user.id)) {
+    json(res, 403, {
+      status: 'error',
+      code: 'forbidden',
+      message: 'Your Discord account is not allowed to manage the VMax Forwarder dashboard.',
+    });
+    return null;
+  }
+  return user;
+}
+
+function readJsonBody(req, limitBytes = 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    let raw = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      size += Buffer.byteLength(chunk);
+      if (size > limitBytes) {
+        reject(new Error('Request body is too large.'));
+        req.destroy();
+        return;
+      }
+      raw += chunk;
+    });
+    req.on('end', () => {
+      if (!raw.trim()) return resolve({});
+      try {
+        resolve(JSON.parse(raw));
+      } catch {
+        reject(new Error('Invalid JSON body.'));
+      }
+    });
+    req.on('error', reject);
+  });
 }
 
 function dashboardUrl() {
@@ -406,25 +485,7 @@ async function handleOAuthCallback(req, res, url) {
 
 // Handles user profile and script list for the dashboard: GET /api/user/:discordId
 async function handleUserDashboard(req, res, discordId) {
-  let user = readSession(req)?.user || null;
-
-  // Backward-compatible support for a browser that still has a token from the
-  // old client-side OAuth flow. New logins use the signed HttpOnly cookie.
-  if (!user) {
-    const auth = req.headers.authorization || '';
-    const match = auth.match(/^Bearer\s+(.+)$/i);
-    if (match) {
-      try {
-        const response = await fetch(DISCORD_API + '/users/@me', {
-          headers: { Authorization: `Bearer ${match[1]}` },
-        });
-        if (response.ok) user = await response.json();
-      } catch {
-        // The unauthorized response below handles Discord being unavailable.
-      }
-    }
-  }
-
+  const user = await getAuthenticatedUser(req);
   if (!user?.id) return unauthorized(res);
   if (String(user.id) !== String(discordId)) {
     return json(res, 403, { status: 'error', code: 'forbidden', message: 'That is not your dashboard.' });
@@ -456,6 +517,182 @@ async function handleUserDashboard(req, res, discordId) {
     plan: isBotOwner(discordId) ? 'Owner' : 'Vmax',
     scripts: scriptsData,
   });
+}
+
+function forwardRulePayloadToApi(rule) {
+  return ruleToApi(rule);
+}
+
+function forwardOverviewPayload(client) {
+  return {
+    status: 'ok',
+    system: getForwardStatus(client),
+    rules: getForwardRulesForDashboard(),
+    recentHistory: getForwardHistory(25),
+    recentLogs: getForwardLogs(25),
+  };
+}
+
+async function handleForwarderOverview(req, res, client) {
+  const user = await requireForwarderManager(req, res);
+  if (!user) return;
+  return json(res, 200, {
+    ...forwardOverviewPayload(client),
+    user: {
+      id: user.id,
+      username: user.username,
+      global_name: user.global_name || null,
+      avatar: user.avatar || null,
+    },
+  });
+}
+
+async function handleForwarderRules(req, res) {
+  const user = await requireForwarderManager(req, res);
+  if (!user) return;
+  return json(res, 200, {
+    status: 'ok',
+    rules: getForwardRulesForDashboard(),
+    manager_id: user.id,
+  });
+}
+
+async function handleForwarderLogs(req, res) {
+  const user = await requireForwarderManager(req, res);
+  if (!user) return;
+  return json(res, 200, {
+    status: 'ok',
+    logs: getForwardLogs(100),
+    history: getForwardHistory(100),
+  });
+}
+
+async function handleForwarderCreateRule(req, res, client) {
+  const user = await requireForwarderManager(req, res);
+  if (!user) return;
+
+  let body;
+  try {
+    body = await readJsonBody(req);
+  } catch (error) {
+    return json(res, 400, { status: 'error', code: 'invalid_body', message: error.message });
+  }
+
+  const sourceGuildId = String(body.sourceGuildId || '').trim();
+  const sourceChannelId = String(body.sourceChannelId || '').replace(/[<#>]/g, '').trim();
+  const sourceChannelName = String(body.sourceChannelName || sourceChannelId || '').trim();
+  const sourceGuildName = String(body.sourceGuildName || sourceGuildId || '').trim();
+  const destinationWebhook = String(body.destinationWebhook || '').trim();
+  const destinationChannelId = String(body.destinationChannelId || '').replace(/[<#>]/g, '').trim();
+
+  if (!sourceGuildId || !sourceChannelId || !isSnowflake(sourceChannelId)) {
+    return json(res, 400, {
+      status: 'error',
+      code: 'invalid_source',
+      message: 'sourceGuildId and sourceChannelId are required. sourceChannelId must be a Discord channel ID.',
+    });
+  }
+
+  if (!destinationWebhook && !destinationChannelId) {
+    return json(res, 400, {
+      status: 'error',
+      code: 'missing_destination',
+      message: 'Provide either destinationWebhook or destinationChannelId.',
+    });
+  }
+
+  if (destinationWebhook && destinationChannelId) {
+    return json(res, 400, {
+      status: 'error',
+      code: 'ambiguous_destination',
+      message: 'Choose only one destination type: webhook OR destinationChannelId.',
+    });
+  }
+
+  let destinationMeta = {
+    destinationType: destinationWebhook ? 'webhook' : 'channel',
+    destinationChannelId: null,
+    destinationGuildId: null,
+    destinationGuildName: null,
+    destinationChannelName: null,
+    destWebhook: destinationWebhook || null,
+  };
+
+  if (destinationWebhook) {
+    if (!isWebhookUrl(destinationWebhook)) {
+      return json(res, 400, {
+        status: 'error',
+        code: 'invalid_webhook',
+        message: 'destinationWebhook must be a valid Discord webhook URL.',
+      });
+    }
+  } else {
+    const checked = await validateDestinationChannelAccess(client, destinationChannelId, sourceGuildId, user.id);
+    if (!checked.ok) {
+      return json(res, 403, { status: 'error', code: checked.code, message: checked.message });
+    }
+    destinationMeta = {
+      destinationType: 'channel',
+      destinationChannelId: checked.destination.id,
+      destinationGuildId: checked.destination.guildId || null,
+      destinationGuildName: checked.destination.guild?.name || null,
+      destinationChannelName: checked.destination.name || checked.destination.id,
+      destWebhook: null,
+    };
+  }
+
+  const rule = addForward({
+    guildId: sourceGuildId,
+    sourceGuildId,
+    sourceGuildName,
+    sourceChannelId,
+    sourceChannelName,
+    createdBy: user.id,
+    updatedBy: user.id,
+    allowedFileTypes: body.allowedFileTypes || 'all',
+    maxFileSizeBytes: Number(body.maxFileSizeBytes || 8 * 1024 * 1024),
+    forwardText: body.forwardText !== false,
+    forwardEmbeds: Boolean(body.forwardEmbeds),
+    showAuthor: body.showAuthor !== false,
+    enabled: body.enabled !== false,
+    ...destinationMeta,
+  });
+
+  return json(res, 201, {
+    status: 'ok',
+    rule: forwardRulePayloadToApi(rule),
+  });
+}
+
+async function handleForwarderRuleAction(req, res, client, ruleId, action) {
+  const user = await requireForwarderManager(req, res);
+  if (!user) return;
+
+  const rule = getForward(ruleId);
+  if (!rule) {
+    return json(res, 404, { status: 'error', code: 'not_found', message: 'Rule not found.' });
+  }
+
+  if (action === 'delete') {
+    removeForward(ruleId, user.id);
+    return json(res, 200, { status: 'ok', removed: true, ruleId });
+  }
+
+  if (action === 'enable' || action === 'disable') {
+    const updated = setForwardEnabled(ruleId, action === 'enable', user.id);
+    return json(res, 200, { status: 'ok', rule: forwardRulePayloadToApi(updated) });
+  }
+
+  if (action === 'test') {
+    try {
+      await sendForwardTest(ruleId, client, user.id);
+      return json(res, 200, { status: 'ok', sent: true });
+    } catch (error) {
+      return json(res, 502, { status: 'error', code: 'test_failed', message: error.message });
+    }
+  }
+
+  return json(res, 404, { status: 'error', code: 'not_found', message: 'Unknown forwarder action.' });
 }
 
 function findHostedSource(hashClean) {
@@ -636,6 +873,17 @@ export function startApiServer(client) {
       return res.end();
     }
 
+    if (req.method === 'POST' && path === '/api/forwarder/rules') {
+      return handleForwarderCreateRule(req, res, client);
+    }
+
+    if (req.method === 'POST') {
+      const actionMatch = path.match(/^\/api\/forwarder\/rules\/([^/]+)\/(enable|disable|delete|test)$/i);
+      if (actionMatch) {
+        return handleForwarderRuleAction(req, res, client, decodeURIComponent(actionMatch[1]), actionMatch[2].toLowerCase());
+      }
+    }
+
     if (req.method !== 'GET') return json(res, 405, { status: 'error', message: 'Method not allowed.' });
 
     if (PUBLIC_API_PATHS.has(path) && rateLimited(ip)) {
@@ -682,6 +930,18 @@ export function startApiServer(client) {
       return json(res, 200, session
         ? { authenticated: true, user: session.user, expires_at: session.exp * 1000 }
         : { authenticated: false, user: null });
+    }
+
+    if (path === '/api/forwarder/overview') {
+      return handleForwarderOverview(req, res, client);
+    }
+
+    if (path === '/api/forwarder/rules') {
+      return handleForwarderRules(req, res);
+    }
+
+    if (path === '/api/forwarder/logs') {
+      return handleForwarderLogs(req, res);
     }
 
     // ---- Dashboard User Endpoint: GET /api/user/:discordId ----

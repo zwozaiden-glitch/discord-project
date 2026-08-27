@@ -22,10 +22,14 @@ const COLLECTIONS = [
   'tickets',
   'loaders',
   'forwards',
+  'forwardhistory',
+  'forwardlogs',
 ];
 
 const DEFAULT_VALUES = {
   analytics: [],
+  forwardhistory: {},
+  forwardlogs: [],
 };
 
 mkdirSync(DATA_DIR, { recursive: true });
